@@ -1,0 +1,61 @@
+name: refresh-data
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # 每 6 小时
+  workflow_dispatch: {}      # 允许手动/Worker 触发
+  push:
+    branches: [main]
+    paths:
+      - "data/classify.mjs"
+      - "server.mjs"
+      - "scripts/**"
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 写入 Space-Track 凭据（仅内存，不落日志）
+        run: |
+          mkdir -p data
+          printf 'SPACETRACK_USER=%s\nSPACETRACK_PASS=%s\n' "${{ secrets.SPACETRACK_USER }}" "${{ secrets.SPACETRACK_PASS }}" > data/.spacetrack.env
+
+      - name: 构建全量目录（复用本地构建管线）
+        run: |
+          node server.mjs --port 5199 & SRV=$!
+          for i in $(seq 1 60); do
+            if curl -fsS "http://127.0.0.1:5199/api/health" >/dev/null 2>&1; then break; fi
+            sleep 3
+          done
+          curl -fsS "http://127.0.0.1:5199/api/catalog?force=1" > /dev/null
+          # 等目录落盘（构建完成时 catalog.json 存在且 count>0）
+          for i in $(seq 1 80); do
+            if [ -f data/catalog.json ]; then
+              n=$(node -e "console.log(JSON.parse(require('fs').readFileSync('data/catalog.json','utf8')).satellites.length)")
+              if [ "$n" -gt 1000 ]; then echo "count=$n"; break; fi
+            fi
+            sleep 5
+          done
+          kill $SRV || true
+
+      - name: 导出静态快照
+        run: node scripts/build-pages.mjs
+
+      - name: 上传到 R2
+        run: |
+          npx --yes wrangler@latest r2 object put "orbit-holo-catalog/catalog.json.gz" --file public/data/catalog.json.gz --content-type application/gzip --remote
+          npx --yes wrangler@latest r2 object put "orbit-holo-catalog/meta.json" --file public/data/meta.json --content-type application/json --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: 清理凭据
+        if: always()
+        run: rm -f data/.spacetrack.env

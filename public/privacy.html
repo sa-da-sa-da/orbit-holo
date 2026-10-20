@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>隐私与合规 · Privacy &amp; Compliance · ORBITAL MIRROR</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 40px 20px 80px;
+    background: radial-gradient(1200px 700px at 50% 0%, #0a2433 0%, #03070d 60%);
+    color: #cfe9f2; font: 14px/1.75 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 22px; letter-spacing: .04em; color: #eafcff; margin: 0 0 4px; }
+  h2 { font-size: 15px; letter-spacing: .06em; color: #5ef0ff; margin: 28px 0 8px; }
+  .sub { color: rgba(207,233,242,.6); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 4px; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid rgba(94,240,255,.14); vertical-align: top; }
+  th { color: rgba(94,240,255,.9); font-weight: 600; }
+  code { background: rgba(94,240,255,.1); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  .card { border: 1px solid rgba(94,240,255,.22); border-radius: 10px; padding: 16px 18px; background: rgba(4,14,22,.7); margin: 14px 0; }
+  .ok { color: #4ade80; }
+  a { color: #5ef0ff; }
+  .en { color: rgba(207,233,242,.75); }
+  .en h2 { color: rgba(94,240,255,.75); }
+</style>
+</head>
+<body>
+<main>
+  <div class="sub">Orbital Mirror · Privacy &amp; Compliance</div>
+  <h1>隐私与合规说明</h1>
+  <p>本站是一个本地运行的三维卫星可视化工具。我们的原则很简单：<strong>不追踪、不画像、不卖数据、不使用第三方统计。</strong></p>
+
+  <h2>一、我们用什么、不用什么</h2>
+  <table>
+    <tr><th>项目</th><th>使用情况</th></tr>
+    <tr><td>Cookie</td><td><span class="ok">不使用</span>（浏览器端不写入任何 Cookie；服务端与 Space-Track 的会话 Cookie 只存在于服务进程内存中，不会下发到你的浏览器）</td></tr>
+    <tr><td>第三方统计 / 广告 / 指纹</td><td><span class="ok">全部不使用</span>（页面零外部脚本，全部资源同源加载）</td></tr>
+    <tr><td>浏览器本地存储 localStorage</td><td>仅保存你的偏好，见下表；<strong>不会上传到任何服务器</strong></td></tr>
+    <tr><td>浏览器定位（可拒绝）</td><td>只在你点击「使用我的位置」时申请，坐标仅存本地，用于计算可见卫星与过境</td></tr>
+  </table>
+
+  <h2>二、本地存储明细（全部可一键清除）</h2>
+  <table>
+    <tr><th>键名</th><th>用途</th></tr>
+    <tr><td><code>holomirror.observer</code></td><td>你设置的观测点经纬度与名称</td></tr>
+    <tr><td><code>holomirror.settings</code></td><td>时区、12/24 小时制、自动旋转模式、图层开关、语言</td></tr>
+    <tr><td><code>holomirror.detailPos</code></td><td>详情浮动卡的拖动位置</td></tr>
+    <tr><td><code>holomirror.consent</code></td><td>是否已确认本提示（只存布尔值）</td></tr>
+  </table>
+  <div class="card">
+    在站点内「⚙ 设置 → 隐私」中点击 <strong>清除本地数据</strong> 即可全部删除；或用浏览器设置清除本站数据。
+  </div>
+
+  <h2>三、数据来源与许可</h2>
+  <table>
+    <tr><th>内容</th><th>来源 / 许可</th></tr>
+    <tr><td>卫星两行根数（TLE）与目录元数据</td><td>Space-Track.org（需注册账号，按其使用条款仅用于非商业研究/可视化）与 CelesTrak</td></tr>
+    <tr><td>望远镜观测成果图</td><td>NASA 图像库（公共领域，标注了具体机构出处），点击可跳转 NASA 原页</td></tr>
+    <tr><td>岸线/国界底图</td><td>Natural Earth / world-atlas（公共领域）</td></tr>
+  </table>
+
+  <h2>四、合规提示</h2>
+  <p>本工具仅用于公开轨道数据的可视化展示与科普，不做目标跟踪、不提供定位/引导能力。若用于商业或公开发布，请自行核对数据源条款（尤其 Space-Track 的非商业使用限制）与图片来源署名要求。</p>
+
+  <h2>五、面向欧盟用户（GDPR）</h2>
+  <table>
+    <tr><th>项目</th><th>说明</th></tr>
+    <tr><td>数据控制者</td><td>本站为本地/自建部署的开源可视化工具，不设集中式用户数据库。若你访问的是他人部署的实例，请联系该实例的运营者。</td></tr>
+    <tr><td>处理的法律依据</td><td>GDPR Art. 6(1)(f) 正当利益：仅在你本机保存界面偏好；Art. 6(1)(a) 同意：仅在你主动点击「使用我的位置」时处理定位。</td></tr>
+    <tr><td>处理的个人数据</td><td>仅浏览器 localStorage 中的偏好与（可选的）观测点坐标；<strong>不上传、不共享、不用于画像</strong>。</td></tr>
+    <tr><td>存储期限</td><td>直至你清除浏览器数据；站内「⚙ 设置 → 隐私与数据 → 清除本地数据」可一键删除。</td></tr>
+    <tr><td>你的权利</td><td>访问、更正、删除、限制处理、数据可携、反对（Art. 15–21）。由于数据仅存于你的设备，直接清除即可实现删除权；如需协助可联系实例运营者。</td></tr>
+    <tr><td>跨境传输</td><td>无：不发生数据传输。卫星目录由运营者服务器或 CDN 提供，不含任何用户数据。</td></tr>
+    <tr><td>自动化决策 / 画像</td><td>无。</td></tr>
+    <tr><td>未成年人</td><td>本工具面向一般公众，不主动收集任何年龄信息。</td></tr>
+    <tr><td>监管机构投诉</td><td>你有权向所在成员国的数据保护机构投诉。</td></tr>
+  </table>
+
+  <div class="en">
+    <h2>English summary</h2>
+    <p>This is a locally hosted 3D satellite visualiser. <strong>No cookies, no analytics, no advertising, no fingerprinting.</strong> All third-party requests are avoided; every asset is served same-origin.</p>
+    <p>Preferences are stored only in your browser's <code>localStorage</code> (<code>holomirror.observer</code>, <code>holomirror.settings</code>, <code>holomirror.detailPos</code>, <code>holomirror.consent</code>) and never uploaded. Geolocation is requested only when you press "Use my location" and stays on your device.</p>
+    <p>Data: TLE/SATCAT from Space-Track.org (non-commercial use per their terms) and CelesTrak; telescope imagery from NASA Image Library (public domain, credited per image, linked to the original page); basemap from Natural Earth / world-atlas (public domain).</p>
+    <p>Intended for public orbital-data visualisation and education only — not for tracking, targeting or navigation.</p>
+    <p><strong>EU users (GDPR):</strong> controller = the operator of the instance you are visiting; legal basis = Art. 6(1)(f) legitimate interest (UI preferences stored locally) and Art. 6(1)(a) consent (geolocation, only when you press "Use my location"). No personal data is transmitted, stored server-side, profiled or shared; no international transfers; no automated decision-making. Storage lasts until you clear it — use "⚙ Settings → Privacy & data → Clear local data" to erase everything (Art. 17). You may exercise rights under Art. 15–21 by contacting the operator, and you may lodge a complaint with your local supervisory authority.</p>
+  </div>
+
+  <p style="margin-top:32px"><a href="./">← 返回 / Back to the globe</a></p>
+</main>
+</body>
+</html>
