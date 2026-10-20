@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<title>地球卫星全息镜像 · ORBITAL MIRROR</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%235ef0ff' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%235ef0ff'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="./css/holo.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/addons/"
+  }
+}
+</script>
+</head>
+<body>
+  <canvas id="scene" aria-label="三维地球卫星全息图"></canvas>
+  <div id="vignette" aria-hidden="true"></div>
+  <div id="scanlines" aria-hidden="true"></div>
+  <div id="grid-overlay" aria-hidden="true"></div>
+
+  <div id="hud">
+    <header id="hud-top">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div class="brand-text">
+          <h1 class="brand-title">地球卫星全息镜像</h1>
+          <div class="brand-sub">ORBITAL MIRROR <span class="slash">/</span> REAL-TIME SATELLITE CONSTELLATION</div>
+        </div>
+      </div>
+
+      <div id="data-status" class="data-status" title="数据来源与更新时间">
+        <span class="ds-dot"></span>
+        <span id="data-source">正在接入数据链路…</span>
+        <span class="ds-sep">·</span>
+        <span id="data-updated">--:--</span>
+        <button id="refresh-btn" class="mini-btn" title="重新抓取最新星历">刷新</button>
+      </div>
+
+      <div id="perf" class="perf">
+        <span>FPS <b id="fps">--</b></span>
+        <span>显示 <b id="render-count">0</b></span>
+        <span class="ds-sep">/</span>
+        <span>总计 <b id="total-count">0</b></span>
+      </div>
+    </header>
+
+    <div id="data-error" class="data-error" hidden></div>
+
+    <aside id="panel-left" class="panel panel-left" aria-label="筛选面板">
+      <button id="btn-collapse-left" class="panel-tab" title="收起/展开筛选面板">筛选</button>
+      <div class="panel-inner">
+        <section class="panel-block">
+          <h3 class="panel-title"><span class="tick"></span>检索 <span class="en">SEARCH</span></h3>
+          <div class="search-wrap">
+            <input id="search-input" type="search" placeholder="名称 / NORAD 编号 / 国家" autocomplete="off" spellcheck="false" />
+            <button id="search-clear" class="icon-btn" title="清空">×</button>
+          </div>
+          <div class="hint-line" id="search-hint"></div>
+        </section>
+
+        <section class="panel-block">
+          <h3 class="panel-title"><span class="tick"></span>轨道类型 <span class="en">ORBIT</span></h3>
+          <div id="orbit-chips" class="chips"></div>
+        </section>
+
+        <section class="panel-block">
+          <h3 class="panel-title"><span class="tick"></span>任务类型 <span class="en">MISSION</span></h3>
+          <div id="category-chips" class="chips"></div>
+        </section>
+
+        <section class="panel-block panel-block-grow">
+          <h3 class="panel-title">
+            <span class="tick"></span>国家 / 组织 <span class="en">NATIONS</span>
+            <button id="country-clear" class="link-btn">全部显示</button>
+          </h3>
+          <div id="country-list" class="country-list"></div>
+        </section>
+      </div>
+    </aside>
+
+    <aside id="panel-right" class="panel panel-right" aria-label="统计与详情面板">
+      <button id="btn-collapse-right" class="panel-tab" title="收起/展开统计面板">统计</button>
+      <div class="panel-inner">
+        <section id="stats-block" class="panel-block">
+          <h3 class="panel-title"><span class="tick"></span>全球概览 <span class="en">OVERVIEW</span></h3>
+          <div id="stat-grid" class="stat-grid"></div>
+          <div id="orbit-bars" class="bars"></div>
+          <div class="panel-subtitle">任务类型分布 <span class="en">BY MISSION</span></div>
+          <div id="category-bars" class="bars category-bars"></div>
+          <div class="panel-subtitle">卫星数量 TOP 国家 <span class="en">BY NATION</span></div>
+          <div id="country-bars" class="bars country-bars"></div>
+        </section>
+
+        <section id="detail-block" class="panel-block detail-block" hidden>
+          <h3 class="panel-title"><span class="tick"></span>目标详情 <span class="en">TARGET</span>
+            <button id="detail-close" class="link-btn">关闭</button>
+          </h3>
+          <div id="sat-detail" class="sat-detail"></div>
+        </section>
+      </div>
+    </aside>
+
+    <footer id="hud-bottom">
+      <div class="time-bar">
+        <button id="btn-play" class="btn" title="暂停/继续时间">⏸</button>
+        <button id="btn-now" class="btn btn-ghost" title="回到当前真实时间">回到现在</button>
+        <div class="clock">
+          <span id="clock-utc" class="clock-utc">--:--:--</span>
+          <span id="clock-local" class="clock-local">UTC</span>
+          <span id="clock-tag" class="clock-tag">实时</span>
+        </div>
+        <div id="speed-btns" class="chips speed-chips"></div>
+      </div>
+      <div id="layer-bar" class="layer-bar"></div>
+      <div class="hint">拖拽旋转 · 滚轮缩放 · 点击卫星查看详情（Shift+点击可选重叠目标）· <b>Alt+点击地球设置观测点</b> · 双击空白重置 · C 键切换配色</div>
+    </footer>
+  </div>
+
+  <div id="loading" class="loading">
+    <div class="loading-ring" aria-hidden="true"></div>
+    <div class="loading-title">正在建立全息链路</div>
+    <div class="loading-sub" id="loading-sub">连接数据服务…</div>
+    <div class="loading-bar"><i id="loading-progress"></i></div>
+    <div class="loading-note">SGP4 轨道递推 · CelesTrak 星历</div>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
