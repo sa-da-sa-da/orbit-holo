@@ -107,7 +107,7 @@ const state = {
   colorMode: 'country',
   selection: -1,
   hover: -1,
-  layers: { orbits: true, grid: true, atmosphere: true, stars: true, autoRotate: true, labels: true, terminator: true, meridian: true, axis: true },
+  layers: { ecliptic: true, orbits: true, grid: true, atmosphere: true, stars: true, autoRotate: true, labels: true, terminator: true, meridian: true, axis: true },
   clock: { baseMs: Date.now(), baseReal: performance.now(), rate: 1, paused: false },
   observer: null,
   visibility: null,
@@ -141,7 +141,15 @@ function hexToRgb(hex) {
 }
 const pad2 = (n) => (n < 10 ? '0' : '') + n;
 const SETTINGS_KEY = 'holomirror.settings';
-const settings = { tz: 'local', hour12: false, autoRotate: 'orbit', autoFit: true, lang: 'zh', roll: 23.44 };
+const settings = { tz: 'local', hour12: false, autoRotate: 'orbit', autoFit: true, lang: 'zh', roll: 23.44, autoObliquity: false, epoch: 0 };
+
+/** 地轴倾角（度）：手动值 or 按 41,000 年进动周期自动计算（22.1°–24.5°） */
+function obliquityDeg() {
+  if (!settings.autoObliquity) return settings.roll;
+  const t = settings.epoch || 0;                     // 距 2000 年的年数
+  const eps = 23.439 - 1.2 * Math.cos((2 * Math.PI * t) / 41000);
+  return Math.max(22.1, Math.min(24.5, eps));
+}
 const CATEGORY_LABELS_EN = {
   comms: 'Communications', nav: 'Navigation', eo: 'Earth Observation', mil: 'Military / Recon',
   weather: 'Weather / Ocean', science: 'Science', telescope: 'Space Telescopes', station: 'Stations / Crewed',
@@ -164,6 +172,8 @@ function loadSettings() {
     if (o && ['off', 'orbit', 'earth'].indexOf(o.autoRotate) >= 0) settings.autoRotate = o.autoRotate;
     if (o && (o.lang === 'zh' || o.lang === 'en')) settings.lang = o.lang;
     if (o && typeof o.roll === 'number' && o.roll >= 0 && o.roll <= 60) settings.roll = o.roll;
+    if (o && typeof o.autoObliquity === 'boolean') settings.autoObliquity = o.autoObliquity;
+    if (o && typeof o.epoch === 'number' && Math.abs(o.epoch) <= 20500) settings.epoch = o.epoch;
   } catch (err) { /* 忽略损坏的设置 */ }
 }
 
@@ -361,11 +371,58 @@ const handlers = {
     pushWorkerTime();
     ui.toast('已回到当前真实时间 · 实时模式');
   },
+  onJumpSeason(key) {
+    const map = { chunfen: 0, xiazhi: 90, qiufen: 180, dongzhi: 270 };
+    const target = map[key];
+    if (target == null) return;
+    const ms = seasonTimeMs(target, nowMs());
+    state.clock.baseMs = ms;
+    state.clock.baseReal = performance.now();
+    state.clock.paused = true;
+    pushWorkerTime();
+    updateSunDir(ms);
+    placeSunMarker();
+    const d = new Date(ms);
+    const decl = Math.asin(Math.sin(obliquityDeg() * Math.PI / 180) * Math.sin(target * Math.PI / 180)) * 180 / Math.PI;
+    const names = { chunfen: '春分', xiazhi: '夏至', qiufen: '秋分', dongzhi: '冬至' };
+    const polar = Math.abs(decl) > 0.5
+      ? (decl > 0 ? ' · 北极圈极昼 / 南极圈极夜' : ' · 南极圈极昼 / 北极圈极夜')
+      : ' · 全球昼夜平分';
+    ui.toast(names[key] + ' ' + d.toISOString().slice(0, 10) + ' · 太阳直射 ' + Math.abs(decl).toFixed(1) + '°' + (decl >= 0 ? 'N' : 'S') + polar);
+    if (typeof ui.updateClock === 'function') ui.updateClock();
+  },
+  onEpochChange(years) {
+    settings.epoch = Math.max(-20500, Math.min(20500, Number(years) || 0));
+    settings.autoObliquity = true;
+    saveSettings();
+    applyCameraRoll(true);
+    updateSunDir(nowMs());
+    updateEclipticPlane();
+    const el = document.getElementById('epoch-label');
+    if (el) el.textContent = (settings.epoch >= 0 ? '+' : '') + Math.round(settings.epoch) + ' 年';
+    ui.toast('纪元 ' + (settings.epoch >= 0 ? '+' : '') + Math.round(settings.epoch) + ' 年 · 地轴倾角 ' + obliquityDeg().toFixed(2) + '°');
+  },
+  onObliquityAuto(on) {
+    settings.autoObliquity = !!on;
+    saveSettings();
+    applyCameraRoll(true);
+    updateSunDir(nowMs());
+    updateEclipticPlane();
+  },
+  onEclipticToggle(on) {
+    state.layers.ecliptic = !!on;
+    if (eclipticGroup) eclipticGroup.visible = !!on;
+    updateEclipticPlane();
+    ui.toast(on ? '黄道面参考盘已显示' : '黄道面参考盘已隐藏');
+  },
   onAxisTiltChange(deg) {
     const v = Math.max(0, Math.min(60, Number(deg) || 0));
     settings.roll = v;
+    settings.autoObliquity = false;
     saveSettings();
     applyCameraRoll(true);
+    updateSunDir(nowMs());
+    updateEclipticPlane();
     ui.toast(settings.lang === 'en' ? 'Axial tilt ' + v.toFixed(1) + '°' : '地轴倾角 ' + v.toFixed(1) + '°');
   },
   onSetLang(lang) {
@@ -626,10 +683,11 @@ let lastPositions = null;
 let lastTrackAt = 0;
 
 // ---------- 主流程 ----------
-const BUILD_STAMP = 'v21';
+const BUILD_STAMP = 'v22';
 
 async function boot() {
   // 版本徽标（若被 UI 重写掉则自动补一个）
+  ensureBuildStamp();
   let stamp = document.getElementById('build-stamp');
   if (!stamp) {
     stamp = document.createElement('div');
@@ -642,7 +700,7 @@ async function boot() {
   state.layers.autoRotate = settings.autoRotate !== 'off';
   loadAstroManifest();
   try {
-    const mod = await import('./ui.js?v=21');
+    const mod = await import('./ui.js?v=22');
     if (mod && typeof mod.createUI === 'function') ui = mod.createUI(handlers);
   } catch (err) {
     console.warn('[ui] 使用降级界面：', err && err.message);
@@ -1029,7 +1087,7 @@ function buildSizes() {
 }
 
 function startWorker() {
-  worker = new Worker(new URL('./propagate.worker.js?v=21', import.meta.url), { type: 'module' });
+  worker = new Worker(new URL('./propagate.worker.js?v=22', import.meta.url), { type: 'module' });
   lastWorkerMsgAt = performance.now();
   worker.onmessage = (e) => {
     const msg = e.data || {};
@@ -1047,6 +1105,7 @@ function startWorker() {
       ui.setLoading({ visible: true, text: '解析轨道根数 ' + msg.done + ' / ' + msg.total, progress: p });
     } else if (msg.type === 'ready') {
       ui.setLoading({ visible: false });
+      buildEclipticPlane();
       applyCameraRoll(true);
       buildAxisTiltControl();
       ui.toast('全息链路已建立 · ' + fmtNum(msg.total) + ' 颗卫星');
@@ -1720,7 +1779,111 @@ function kindOf(sat) {
   return 'UNK';
 }
 
+/** 太阳视黄经（度） */
+function solarLongitudeDeg(ms) {
+  const jd = ms / 86400000 + 2440587.5;
+  const n = jd - 2451545.0;
+  const L = (280.46 + 0.9856474 * n) % 360;
+  const g = ((357.528 + 0.9856003 * n) % 360) * (Math.PI / 180);
+  const lambda = (L + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * (Math.PI / 180);
+  return (((lambda * 180) / Math.PI) % 360 + 360) % 360;
+}
+
+/** 求解下一次「太阳黄经 = targetDeg」的时刻（0 春分 / 90 夏至 / 180 秋分 / 270 冬至） */
+function seasonTimeMs(targetDeg, fromMs) {
+  const l0 = solarLongitudeDeg(fromMs);
+  const d = ((targetDeg - l0) % 360 + 360) % 360;
+  let ms = fromMs + (d / 0.9856) * 86400000;
+  for (let i = 0; i < 8; i++) {
+    const diff = ((targetDeg - solarLongitudeDeg(ms) + 540) % 360) - 180;
+    if (Math.abs(diff) < 1e-5) break;
+    ms += (diff / 0.9856) * 86400000;
+  }
+  return ms;
+}
+
 /** 地轴线（南北极）+ 极点标记 + 太阳直射点标记 */
+let eclipticGroup = null;
+let eclipticTiltText = null;
+
+/** 黄道面参考盘：一个在黄道面上的大圆环 + 倾角标注，让"地轴斜了 n°"一眼可见 */
+function buildEclipticPlane() {
+  if (eclipticGroup) {
+    scene.remove(eclipticGroup);
+    eclipticGroup.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material && o.material.map) o.material.map.dispose(); if (o.material) o.material.dispose(); });
+  }
+  const g = new THREE.Group();
+  g.name = 'ecliptic';
+  const R = WORLD_R * 2.35;
+
+  // 圆环（黄道面本体）
+  const pts = [];
+  for (let i = 0; i <= 160; i++) {
+    const a = (i / 160) * Math.PI * 2;
+    pts.push(new THREE.Vector3(Math.cos(a) * R, 0, Math.sin(a) * R));
+  }
+  const ring = new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.34, depthWrite: false, blending: THREE.AdditiveBlending }),
+  );
+  g.add(ring);
+
+  // 内侧半透明盘面（很淡，仅用来暗示"平面"）
+  const disc = new THREE.Mesh(
+    new THREE.CircleGeometry(R, 96),
+    new THREE.MeshBasicMaterial({ color: 0x1a6f9c, transparent: true, opacity: 0.055, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }),
+  );
+  disc.rotation.x = -Math.PI / 2;
+  g.add(disc);
+
+  // 黄道面法线（虚线轴）
+  const normalPts = [];
+  for (let i = 0; i <= 24; i++) {
+    const t = -1 + (i / 24) * 2;
+    normalPts.push(new THREE.Vector3(0, t * R * 0.62, 0));
+  }
+  const normalLine = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(normalPts),
+    new THREE.LineDashedMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.45, dashSize: 6, gapSize: 6, depthWrite: false }),
+  );
+  normalLine.computeLineDistances();
+  g.add(normalLine);
+
+  // 倾角文字
+  const canvas = document.createElement('canvas');
+  canvas.width = 512; canvas.height = 128;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  eclipticTiltText = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }));
+  eclipticTiltText.position.set(R * 0.52, R * 0.30, 0);
+  eclipticTiltText.scale.set(150, 37.5, 1);
+  eclipticTiltText.renderOrder = 20;
+  g.add(eclipticTiltText);
+
+  eclipticGroup = g;
+  eclipticGroup.visible = state.layers.ecliptic !== false;
+  scene.add(g);
+  updateEclipticPlane();
+}
+
+/** 黄道面随倾角变化：盘面法线相对地轴倾斜 ε */
+function updateEclipticPlane() {
+  if (!eclipticGroup) return;
+  const eps = obliquityDeg();
+  eclipticGroup.rotation.z = (-eps * Math.PI) / 180;
+  const sp = eclipticTiltText;
+  if (sp && sp.material && sp.material.map) {
+    const cv = sp.material.map.image;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = 'rgba(125,211,252,0.95)';
+    ctx.font = '600 52px -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('黄道面 · 地轴倾角 ' + eps.toFixed(1) + '°', 12, 64);
+    sp.material.map.needsUpdate = true;
+  }
+}
+
 function buildAxisAndSun() {
   if (axisGroup) {
     scene.remove(axisGroup);
@@ -1790,7 +1953,7 @@ function updateSunDir(ms) {
   const L = (280.46 + 0.9856474 * n) % 360;
   const g = ((357.528 + 0.9856003 * n) % 360) * (Math.PI / 180);
   const lambda = (L + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * (Math.PI / 180);
-  const eps = (23.439 - 0.0000004 * n) * (Math.PI / 180);
+  const eps = (obliquityDeg() * Math.PI) / 180;
   const x = Math.cos(lambda);
   const y = Math.cos(eps) * Math.sin(lambda);
   const z = Math.sin(eps) * Math.sin(lambda);
@@ -3039,6 +3202,19 @@ let clockAt = 0;
 let detailAt = 0;
 let orderDetailRefresh = false;
 
+/** 版本徽标：固定右下角，被 UI 重写掉也能自动补回 */
+function ensureBuildStamp() {
+  let el = document.getElementById('build-stamp');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'build-stamp';
+    el.style.cssText = 'position:fixed;right:10px;bottom:6px;font:10px/1 ui-monospace,Consolas,monospace;color:rgba(207,233,242,.45);pointer-events:none;z-index:5';
+    document.body.appendChild(el);
+  }
+  el.textContent = BUILD_STAMP + ' · ' + new Date().toISOString().slice(0, 10);
+  return el;
+}
+
 /** 底部「地轴倾角」控件：chip + 弹层滑块 + 预设（自带样式，独立于 ui.js） */
 function buildAxisTiltControl() {
   const bar = document.getElementById('layer-bar');
@@ -3057,7 +3233,7 @@ function buildAxisTiltControl() {
 
   const pop = document.createElement('div');
   pop.id = 'axis-tilt-pop';
-  pop.style.cssText = 'position:absolute;right:0;bottom:calc(100% + 8px);width:236px;padding:12px 12px 10px;border-radius:10px;border:1px solid rgba(94,240,255,.35);background:rgba(4,14,22,.95);box-shadow:0 12px 28px rgba(0,0,0,.55);display:none;z-index:60;color:#cfe9f2';
+  pop.style.cssText = 'position:absolute;right:0;bottom:calc(100% + 8px);width:274px;padding:12px 12px 10px;border-radius:10px;border:1px solid rgba(94,240,255,.35);background:rgba(4,14,22,.95);box-shadow:0 12px 28px rgba(0,0,0,.55);display:none;z-index:60;color:#cfe9f2';
   pop.innerHTML =
     '<div style="font:600 11px/1.4 inherit;letter-spacing:.08em;color:#5ef0ff;margin-bottom:2px">地轴倾角 AXIAL TILT</div>' +
     '<div style="font:10px/1.5 inherit;color:rgba(207,233,242,.6);margin-bottom:8px">真实值 23.44° · 拖动即可偏转地轴</div>' +
@@ -3069,6 +3245,27 @@ function buildAxisTiltControl() {
     '  <button type="button" data-tilt="0" style="flex:1;padding:4px 0;border-radius:6px;border:1px solid rgba(94,240,255,.3);background:rgba(94,240,255,.10);color:#eafcff;font:11px/1.3 inherit;cursor:pointer">0°</button>' +
     '  <button type="button" data-tilt="23.44" style="flex:1;padding:4px 0;border-radius:6px;border:1px solid rgba(255,209,102,.5);background:rgba(255,209,102,.16);color:#ffe9a8;font:11px/1.3 inherit;cursor:pointer">23.44°</button>' +
     '  <button type="button" data-tilt="45" style="flex:1;padding:4px 0;border-radius:6px;border:1px solid rgba(94,240,255,.3);background:rgba(94,240,255,.10);color:#eafcff;font:11px/1.3 inherit;cursor:pointer">45°</button>' +
+    '</div>' +
+    '<div style="margin:11px 0 5px;border-top:1px solid rgba(94,240,255,.18)"></div>' +
+    '<div style="font:600 10px/1.4 inherit;letter-spacing:.08em;color:rgba(207,233,242,.75);margin-bottom:6px">节气快跳 SEASON</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">' +
+    '  <button type="button" data-season="chunfen" style="padding:5px 0;border-radius:6px;border:1px solid rgba(74,222,128,.45);background:rgba(74,222,128,.12);color:#c9f7d6;font:11px/1.3 inherit;cursor:pointer">春分 3/20</button>' +
+    '  <button type="button" data-season="xiazhi" style="padding:5px 0;border-radius:6px;border:1px solid rgba(255,209,102,.45);background:rgba(255,209,102,.14);color:#ffe9a8;font:11px/1.3 inherit;cursor:pointer">夏至 6/21</button>' +
+    '  <button type="button" data-season="qiufen" style="padding:5px 0;border-radius:6px;border:1px solid rgba(125,211,252,.45);background:rgba(125,211,252,.12);color:#d6effd;font:11px/1.3 inherit;cursor:pointer">秋分 9/23</button>' +
+    '  <button type="button" data-season="dongzhi" style="padding:5px 0;border-radius:6px;border:1px solid rgba(167,139,250,.45);background:rgba(167,139,250,.12);color:#e3dbff;font:11px/1.3 inherit;cursor:pointer">冬至 12/22</button>' +
+    '</div>' +
+    '<div style="margin:11px 0 5px;border-top:1px solid rgba(94,240,255,.18)"></div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">' +
+    '  <span style="font:600 10px/1.4 inherit;letter-spacing:.08em;color:rgba(207,233,242,.75)">纪元进动 PRECESSION</span>' +
+    '  <label style="display:inline-flex;align-items:center;gap:5px;font:10px/1.3 inherit;color:rgba(207,233,242,.8);cursor:pointer"><input id="obliquity-auto" type="checkbox" style="accent-color:#ffd166;cursor:pointer" />自动</label>' +
+    '</div>' +
+    '<div style="display:flex;align-items:center;gap:8px">' +
+    '  <input id="epoch-range" type="range" min="-20500" max="20500" step="100" style="flex:1;accent-color:#5ef0ff;cursor:pointer" />' +
+    '  <span id="epoch-label" style="min-width:62px;text-align:right;font:600 11px/1 ui-monospace,Consolas,monospace;color:#5ef0ff">+0 年</span>' +
+    '</div>' +
+    '<div style="font:9.5px/1.5 inherit;color:rgba(207,233,242,.5);margin-top:3px">倾角在 22.1°–24.5° 间以 41,000 年为周期变化</div>' +
+    '<div style="margin:9px 0 0">' +
+    '  <button type="button" id="ecliptic-toggle-btn" style="width:100%;padding:5px 0;border-radius:6px;border:1px solid rgba(125,211,252,.45);background:rgba(125,211,252,.14);color:#d6effd;font:11px/1.3 inherit;cursor:pointer">🌞 黄道面参考盘：开</button>' +
     '</div>';
 
   wrap.appendChild(chip);
@@ -3096,7 +3293,38 @@ function buildAxisTiltControl() {
   pop.querySelectorAll('button[data-tilt]').forEach((b) => {
     b.addEventListener('click', () => { const v = Number(b.dataset.tilt); handlers.onAxisTiltChange(v); sync(v); });
   });
-  sync(settings.roll || 0);
+  // 节气
+  pop.querySelectorAll('button[data-season]').forEach((b) => {
+    b.addEventListener('click', () => handlers.onJumpSeason(b.dataset.season));
+  });
+  // 纪元进动
+  const epochRange = pop.querySelector('#epoch-range');
+  const epochLabel = pop.querySelector('#epoch-label');
+  const autoBox = pop.querySelector('#obliquity-auto');
+  epochRange.value = String(settings.epoch || 0);
+  epochLabel.textContent = ((settings.epoch || 0) >= 0 ? '+' : '') + Math.round(settings.epoch || 0) + ' 年';
+  autoBox.checked = !!settings.autoObliquity;
+  epochRange.addEventListener('input', () => {
+    const y = Number(epochRange.value);
+    epochLabel.textContent = (y >= 0 ? '+' : '') + Math.round(y) + ' 年';
+    autoBox.checked = true;
+    handlers.onEpochChange(y);
+    sync(obliquityDeg());
+  });
+  autoBox.addEventListener('change', () => {
+    handlers.onObliquityAuto(autoBox.checked);
+    sync(obliquityDeg());
+  });
+  // 黄道面
+  const eclBtn = pop.querySelector('#ecliptic-toggle-btn');
+  const syncEcl = () => {
+    const on = state.layers.ecliptic !== false;
+    eclBtn.textContent = '🌞 黄道面参考盘：' + (on ? '开' : '关');
+    eclBtn.style.opacity = on ? '1' : '0.6';
+  };
+  eclBtn.addEventListener('click', () => { handlers.onEclipticToggle(state.layers.ecliptic === false); syncEcl(); });
+  syncEcl();
+  sync(obliquityDeg());
 }
 
 /** 地轴倾角：绕「视线方向」滚转相机，让地轴在屏幕上呈现 n° 倾角（纯视图变换，不影响拾取/光照） */
@@ -3104,9 +3332,10 @@ const _rollDir = new THREE.Vector3();
 const _rollUp = new THREE.Vector3();
 let _rollApplied = -1;
 function applyCameraRoll(force) {
-  const deg = settings.roll || 0;
+  const deg = obliquityDeg();
   if (!force && Math.abs(deg - _rollApplied) < 0.001) return;
   _rollApplied = deg;
+  updateEclipticPlane();
   _rollDir.copy(camera.position).sub(controls.target);
   if (_rollDir.lengthSq() < 1e-6) return;
   _rollDir.normalize();
@@ -3156,6 +3385,7 @@ function animate(now) {
     placeSunMarker();
   }
   sunTick = (sunTick + 1) % 30;
+  if (sunTick === 0 && !document.getElementById('build-stamp')) ensureBuildStamp();
   if (selectionMarker) selectionMarker.update(now / 1000);
   if (hoverMarker) hoverMarker.update(now / 1000);
   if (selGround) selGround.setOpacity(0.20 + Math.sin(now / 600) * 0.06);

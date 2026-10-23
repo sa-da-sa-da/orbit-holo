@@ -58,8 +58,12 @@ void main() {
   float antiMeridian = 1.0 - smoothstep(0.0, merW, abs(abs(lonDeg) - 180.0));
   // 昼夜：以太阳方向与球面法线夹角判定，smoothstep 让晨昏线有过渡带
   float sunDot = dot(normalize(vN), normalize(uSunDir));
-  float night = smoothstep(0.10, -0.10, sunDot) * uTerm;
-  float terminator = exp(-pow(sunDot * 16.0, 2.0)) * uTerm;
+  // 昼夜分界：过渡带收窄（约 ±3.5°），夜面压得更暗，白天/黑夜一眼可分
+  float night = smoothstep(0.062, -0.062, sunDot) * uTerm;
+  float dayFac = smoothstep(-0.02, 0.30, sunDot);
+  // 晨昏线：一条细亮线 + 一层很薄的暖色暮光
+  float terminator = exp(-pow(sunDot * 52.0, 2.0)) * uTerm;
+  float twilight = exp(-pow(sunDot * 7.0, 2.0)) * uTerm;
   float sweepY = fract(uTime * 0.045);
   float band = exp(-pow((vUv.y - sweepY) * 26.0, 2.0));
 
@@ -75,19 +79,26 @@ void main() {
   land = mix(land, landPolar, smoothstep(58.0, 76.0, absLat));
   vec3 ocean = mix(oceanShallow, oceanDeep, smoothstep(0.0, 52.0, absLat) * 0.75);
   vec3 col = mix(ocean, land, clamp(m * (0.35 + 0.65 * uLandAmt), 0.0, 1.0));
-  col += vec3(0.180, 0.620, 0.760) * grid * (0.30 + 0.40 * m);
-  col += vec3(0.520, 0.980, 1.000) * coast * (1.05 + 0.10 * sin(uTime * 2.2));
-  col += vec3(0.250, 0.780, 1.000) * fres * 0.85;
-  col += vec3(0.120, 0.600, 0.800) * band * 0.22;
-  col += vec3(0.350, 0.920, 1.000) * equator * 0.18;
-  col += vec3(0.980, 0.760, 0.320) * primeMeridian * uPrime * 0.85;
-  col += vec3(0.540, 0.760, 0.980) * antiMeridian * uPrime * 0.45;
-  col += vec3(1.000, 0.720, 0.300) * terminator * 0.65;
-  // 夜面压暗（保留全息质感，不完全变黑）
-  col *= mix(1.0, 0.55, night);
+  // 白天略提亮，让受光面更实
+  col *= mix(0.88, 1.16, dayFac);
+  // 夜面：先压暗到接近黑，再叠加冷色环境光（"夜半球"一眼可辨）
+  vec3 nightTint = vec3(0.030, 0.075, 0.150);
+  col = mix(col, col * 0.13 + nightTint * 0.22, night);
+  // 全息线框在夜里要收敛，否则黑夜看起来还是亮的
+  float lineVis = 1.0 - night * 0.82;
+  col += vec3(0.180, 0.620, 0.760) * grid * (0.30 + 0.40 * m) * lineVis;
+  col += vec3(0.520, 0.980, 1.000) * coast * (1.05 + 0.10 * sin(uTime * 2.2)) * lineVis;
+  col += vec3(0.250, 0.780, 1.000) * fres * 0.85 * lineVis;
+  col += vec3(0.120, 0.600, 0.800) * band * 0.22 * lineVis;
+  col += vec3(0.350, 0.920, 1.000) * equator * 0.18 * lineVis;
+  col += vec3(0.980, 0.760, 0.320) * primeMeridian * uPrime * 0.85 * lineVis;
+  col += vec3(0.540, 0.760, 0.980) * antiMeridian * uPrime * 0.45 * lineVis;
+  // 暮光暖带（很薄）+ 细亮晨昏线
+  col += vec3(1.000, 0.560, 0.230) * twilight * 0.30;
+  col += vec3(1.000, 0.880, 0.560) * terminator * 0.95;
 
-  float a = 0.88 + fres * 0.12 + coast * 0.12 + grid * 0.10 + band * 0.06;
-  a += primeMeridian * uPrime * 0.22 + terminator * 0.16 - night * 0.05;
+  float a = 0.92 + fres * 0.08 + coast * 0.10 + grid * 0.08 + band * 0.05;
+  a += primeMeridian * uPrime * 0.20 + terminator * 0.30 + twilight * 0.08;
   a = clamp(a, 0.0, 1.0) * uOpacity;
 
   // 极轻微噪点，强化全息质感
