@@ -141,7 +141,7 @@ function hexToRgb(hex) {
 }
 const pad2 = (n) => (n < 10 ? '0' : '') + n;
 const SETTINGS_KEY = 'holomirror.settings';
-const settings = { tz: 'local', hour12: false, autoRotate: 'orbit', autoFit: true, lang: 'zh' };
+const settings = { tz: 'local', hour12: false, autoRotate: 'orbit', autoFit: true, lang: 'zh', roll: 23.44 };
 const CATEGORY_LABELS_EN = {
   comms: 'Communications', nav: 'Navigation', eo: 'Earth Observation', mil: 'Military / Recon',
   weather: 'Weather / Ocean', science: 'Science', telescope: 'Space Telescopes', station: 'Stations / Crewed',
@@ -163,6 +163,7 @@ function loadSettings() {
     if (o && typeof o.hour12 === 'boolean') settings.hour12 = o.hour12;
     if (o && ['off', 'orbit', 'earth'].indexOf(o.autoRotate) >= 0) settings.autoRotate = o.autoRotate;
     if (o && (o.lang === 'zh' || o.lang === 'en')) settings.lang = o.lang;
+    if (o && typeof o.roll === 'number' && o.roll >= 0 && o.roll <= 60) settings.roll = o.roll;
   } catch (err) { /* 忽略损坏的设置 */ }
 }
 
@@ -359,6 +360,13 @@ const handlers = {
     syncAutoRotate();
     pushWorkerTime();
     ui.toast('已回到当前真实时间 · 实时模式');
+  },
+  onAxisTiltChange(deg) {
+    const v = Math.max(0, Math.min(60, Number(deg) || 0));
+    settings.roll = v;
+    saveSettings();
+    applyCameraRoll(true);
+    ui.toast(settings.lang === 'en' ? 'Axial tilt ' + v.toFixed(1) + '°' : '地轴倾角 ' + v.toFixed(1) + '°');
   },
   onSetLang(lang) {
     settings.lang = lang === 'en' ? 'en' : 'zh';
@@ -618,7 +626,7 @@ let lastPositions = null;
 let lastTrackAt = 0;
 
 // ---------- 主流程 ----------
-const BUILD_STAMP = 'v19';
+const BUILD_STAMP = 'v21';
 
 async function boot() {
   // 版本徽标（若被 UI 重写掉则自动补一个）
@@ -634,7 +642,7 @@ async function boot() {
   state.layers.autoRotate = settings.autoRotate !== 'off';
   loadAstroManifest();
   try {
-    const mod = await import('./ui.js?v=19');
+    const mod = await import('./ui.js?v=21');
     if (mod && typeof mod.createUI === 'function') ui = mod.createUI(handlers);
   } catch (err) {
     console.warn('[ui] 使用降级界面：', err && err.message);
@@ -1021,7 +1029,7 @@ function buildSizes() {
 }
 
 function startWorker() {
-  worker = new Worker(new URL('./propagate.worker.js?v=19', import.meta.url), { type: 'module' });
+  worker = new Worker(new URL('./propagate.worker.js?v=21', import.meta.url), { type: 'module' });
   lastWorkerMsgAt = performance.now();
   worker.onmessage = (e) => {
     const msg = e.data || {};
@@ -1039,6 +1047,8 @@ function startWorker() {
       ui.setLoading({ visible: true, text: '解析轨道根数 ' + msg.done + ' / ' + msg.total, progress: p });
     } else if (msg.type === 'ready') {
       ui.setLoading({ visible: false });
+      applyCameraRoll(true);
+      buildAxisTiltControl();
       ui.toast('全息链路已建立 · ' + fmtNum(msg.total) + ' 颗卫星');
       scheduleBatchOrbits();
     } else if (msg.type === 'detail') {
@@ -3029,6 +3039,87 @@ let clockAt = 0;
 let detailAt = 0;
 let orderDetailRefresh = false;
 
+/** 底部「地轴倾角」控件：chip + 弹层滑块 + 预设（自带样式，独立于 ui.js） */
+function buildAxisTiltControl() {
+  const bar = document.getElementById('layer-bar');
+  if (!bar || document.getElementById('axis-tilt-chip')) return;
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:relative;display:inline-flex;align-items:center';
+
+  const chip = document.createElement('button');
+  chip.id = 'axis-tilt-chip';
+  chip.type = 'button';
+  chip.setAttribute('aria-haspopup', 'true');
+  chip.setAttribute('aria-expanded', 'false');
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 10px;margin-left:6px;border-radius:999px;border:1px solid rgba(255,209,102,.55);background:rgba(6,20,30,.88);color:#ffd166;font:11px/1.35 inherit;cursor:pointer;letter-spacing:.04em';
+  chip.textContent = '🌐 地轴 ' + (settings.roll || 0).toFixed(1) + '°';
+
+  const pop = document.createElement('div');
+  pop.id = 'axis-tilt-pop';
+  pop.style.cssText = 'position:absolute;right:0;bottom:calc(100% + 8px);width:236px;padding:12px 12px 10px;border-radius:10px;border:1px solid rgba(94,240,255,.35);background:rgba(4,14,22,.95);box-shadow:0 12px 28px rgba(0,0,0,.55);display:none;z-index:60;color:#cfe9f2';
+  pop.innerHTML =
+    '<div style="font:600 11px/1.4 inherit;letter-spacing:.08em;color:#5ef0ff;margin-bottom:2px">地轴倾角 AXIAL TILT</div>' +
+    '<div style="font:10px/1.5 inherit;color:rgba(207,233,242,.6);margin-bottom:8px">真实值 23.44° · 拖动即可偏转地轴</div>' +
+    '<div style="display:flex;align-items:center;gap:8px">' +
+    '  <input id="axis-tilt-range" type="range" min="0" max="60" step="0.1" style="flex:1;accent-color:#ffd166;cursor:pointer" />' +
+    '  <span id="axis-tilt-value" style="min-width:46px;text-align:right;font:600 12px/1 ui-monospace,Consolas,monospace;color:#ffd166">23.4°</span>' +
+    '</div>' +
+    '<div style="display:flex;gap:6px;margin-top:9px">' +
+    '  <button type="button" data-tilt="0" style="flex:1;padding:4px 0;border-radius:6px;border:1px solid rgba(94,240,255,.3);background:rgba(94,240,255,.10);color:#eafcff;font:11px/1.3 inherit;cursor:pointer">0°</button>' +
+    '  <button type="button" data-tilt="23.44" style="flex:1;padding:4px 0;border-radius:6px;border:1px solid rgba(255,209,102,.5);background:rgba(255,209,102,.16);color:#ffe9a8;font:11px/1.3 inherit;cursor:pointer">23.44°</button>' +
+    '  <button type="button" data-tilt="45" style="flex:1;padding:4px 0;border-radius:6px;border:1px solid rgba(94,240,255,.3);background:rgba(94,240,255,.10);color:#eafcff;font:11px/1.3 inherit;cursor:pointer">45°</button>' +
+    '</div>';
+
+  wrap.appendChild(chip);
+  wrap.appendChild(pop);
+  bar.appendChild(wrap);
+
+  const range = pop.querySelector('#axis-tilt-range');
+  const valueEl = pop.querySelector('#axis-tilt-value');
+  const sync = (deg) => {
+    const v = Number(deg);
+    range.value = String(v);
+    valueEl.textContent = v.toFixed(1) + '°';
+    chip.textContent = (settings.lang === 'en' ? '🌐 Axis tilt ' : '🌐 地轴 ') + v.toFixed(1) + '°';
+  };
+  const open = (on) => {
+    pop.style.display = on ? 'block' : 'none';
+    chip.setAttribute('aria-expanded', on ? 'true' : 'false');
+  };
+
+  chip.addEventListener('click', (e) => { e.stopPropagation(); open(pop.style.display !== 'block'); });
+  pop.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => open(false));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') open(false); });
+  range.addEventListener('input', () => { const v = Number(range.value); handlers.onAxisTiltChange(v); sync(v); });
+  pop.querySelectorAll('button[data-tilt]').forEach((b) => {
+    b.addEventListener('click', () => { const v = Number(b.dataset.tilt); handlers.onAxisTiltChange(v); sync(v); });
+  });
+  sync(settings.roll || 0);
+}
+
+/** 地轴倾角：绕「视线方向」滚转相机，让地轴在屏幕上呈现 n° 倾角（纯视图变换，不影响拾取/光照） */
+const _rollDir = new THREE.Vector3();
+const _rollUp = new THREE.Vector3();
+let _rollApplied = -1;
+function applyCameraRoll(force) {
+  const deg = settings.roll || 0;
+  if (!force && Math.abs(deg - _rollApplied) < 0.001) return;
+  _rollApplied = deg;
+  _rollDir.copy(camera.position).sub(controls.target);
+  if (_rollDir.lengthSq() < 1e-6) return;
+  _rollDir.normalize();
+  _rollUp.set(0, 1, 0).applyAxisAngle(_rollDir, (deg * Math.PI) / 180);
+  camera.up.copy(_rollUp);
+  camera.lookAt(controls.target);
+  controls.update();
+  const el = document.getElementById('axis-tilt-value');
+  if (el) el.textContent = deg.toFixed(1) + '°';
+  const chip = document.getElementById('axis-tilt-chip');
+  if (chip) chip.textContent = (settings.lang === 'en' ? '🌐 Axis tilt ' : '🌐 地轴 ') + deg.toFixed(1) + '°';
+}
+
 function animate(now) {
   requestAnimationFrame(animate);
   const dt = Math.min(0.1, (now - lastFrame) / 1000);
@@ -3058,6 +3149,7 @@ function animate(now) {
   }
 
   controls.update();
+  applyCameraRoll();
   if (globe) globe.update(dt, now / 1000);
   if (globe && sunTick === 0) {
     updateSunDir(nowMs());
