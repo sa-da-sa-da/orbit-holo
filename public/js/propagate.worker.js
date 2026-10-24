@@ -17,11 +17,18 @@ let total = 0;
 let initToken = 0;
 let loop = null;
 let tickCount = 0;
+// 深空目标（SDP4）单次传播比近地慢约 300 倍，改用「每 tick 预算内轮流刷新」
+let deepIdx = [];
+let deepIdxSet = new Uint8Array(0);
+let deepCursor = 0;
+let deepDirty = true;
+const DEEP_BUDGET_MS = 18;
+const DEEP_BUDGET_DIRTY_MS = 60;
 let ecfKm = null;
 let visBuf = null;
 let observer = null; // { lat, lon, altM, vec: {x,y,z}, sinLat, cosLat, sinLon, cosLon }
 let clock = { baseMs: Date.now(), baseReal: performance.now(), rate: 1, paused: false };
-let passToken = 0;
+const passTokens = new Map();
 
 function nowMs() {
   return clock.paused ? clock.baseMs : clock.baseMs + (performance.now() - clock.baseReal) * clock.rate;
@@ -35,9 +42,13 @@ function jdOf(ms) {
 function propagateIndex(i, jd) {
   const s = sats[i];
   if (!s || !s.rec || s.rec.error) return null;
-  const pv = sgp4(s.rec, (jd - s.rec.jdsatepoch) * 1440);
-  if (!pv || !pv.position || pv.position === true) return null;
-  return pv;
+  try {
+    const pv = sgp4(s.rec, (jd - s.rec.jdsatepoch) * 1440);
+    if (!pv || !pv.position || pv.position === true) return null;
+    return pv;
+  } catch (err) {
+    return null;
+  }
 }
 
 /** 太阳单位向量（ECI，低精度算法，误差 < 0.01 度） */
@@ -110,23 +121,50 @@ function lookAngles(px, py, pz, sun) {
 
 function tick() {
   if (!ecfKm || !total) return;
+  const tTick = performance.now();
   const ms = nowMs();
   const jd = jdOf(ms);
   const gmst = gstime(new Date(ms));
-  const out = new Float32Array(total * 3);
+  // 1) 深空目标：在预算内轮流刷新（GEO/HEO 移动慢，允许几秒级刷新）
+  if (deepIdx.length) {
+    const budget = deepDirty ? DEEP_BUDGET_DIRTY_MS : DEEP_BUDGET_MS;
+    const tDeep = performance.now();
+    let guard = 0;
+    while (guard < deepIdx.length && performance.now() - tDeep < budget) {
+      const i = deepIdx[deepCursor];
+      deepCursor++;
+      if (deepCursor >= deepIdx.length) {
+        deepCursor = 0;
+        deepDirty = false;
+      }
+      guard++;
+      const pv = propagateIndex(i, jd);
+      if (!pv) continue;
+      const ecf = eciToEcf(pv.position, gmst);
+      ecfKm[i * 3] = ecf.x;
+      ecfKm[i * 3 + 1] = ecf.y;
+      ecfKm[i * 3 + 2] = ecf.z;
+    }
+  }
+  // 2) 近地目标：每 tick 全量刷新（约 0.9µs/个）
   for (let i = 0; i < total; i++) {
+    if (deepIdxSet[i]) continue;
     const pv = propagateIndex(i, jd);
     if (!pv) continue;
     const ecf = eciToEcf(pv.position, gmst);
     ecfKm[i * 3] = ecf.x;
     ecfKm[i * 3 + 1] = ecf.y;
     ecfKm[i * 3 + 2] = ecf.z;
-    out[i * 3] = ecf.x * SCALE;
-    out[i * 3 + 1] = ecf.z * SCALE;
-    out[i * 3 + 2] = -ecf.y * SCALE;
+  }
+  // 3) 组装渲染缓冲（ECEF → three.js Y-up）
+  const out = new Float32Array(total * 3);
+  for (let i = 0; i < total; i++) {
+    out[i * 3] = ecfKm[i * 3] * SCALE;
+    out[i * 3 + 1] = ecfKm[i * 3 + 2] * SCALE;
+    out[i * 3 + 2] = -ecfKm[i * 3 + 1] * SCALE;
   }
   // three.js 为 Y-up，ECEF 为 Z-up → (x, z, -y)
-  self.postMessage({ type: 'positions', buf: out, timeMs: ms }, [out.buffer]);
+  self.postMessage({ type: 'positions', buf: out, timeMs: ms, tickMs: +(performance.now() - tTick).toFixed(1) }, [out.buffer]);
 
   tickCount++;
   if (observer && visBuf && tickCount % VIS_EVERY === 0) {
@@ -161,6 +199,28 @@ function tick() {
   }
 }
 
+/** 诊断：抽样测传播成本（近地 vs 深空） */
+function bench() {
+  const near = [];
+  const deep = [];
+  for (let i = 0; i < total && (near.length < 300 || deep.length < 300); i++) {
+    const s = sats[i];
+    if (!s || !s.rec) continue;
+    if (s.rec.method === 'd') { if (deep.length < 300) deep.push(i); }
+    else if (near.length < 300) near.push(i);
+  }
+  const jd = jdOf(nowMs());
+  const run = (list) => {
+    if (!list.length) return null;
+    const t0 = performance.now();
+    for (let k = 0; k < 5; k++) for (const i of list) propagateIndex(i, jd);
+    return +(((performance.now() - t0) / (list.length * 5)) * 1000).toFixed(2);
+  };
+  let deepTotal = 0;
+  for (let i = 0; i < total; i++) if (sats[i] && sats[i].rec && sats[i].rec.method === 'd') deepTotal++;
+  self.postMessage({ type: 'bench', total, nearCount: near.length, deepCount: deepTotal, nearUs: run(near), deepUs: run(deep) });
+}
+
 function startLoop() {
   if (loop) clearInterval(loop);
   loop = setInterval(tick, TICK_MS);
@@ -173,6 +233,10 @@ function init(list) {
   sats = new Array(total);
   ecfKm = new Float32Array(total * 3);
   if (observer) setObserver({ lat: observer.lat, lon: observer.lon, altM: 0 });
+  deepIdx = [];
+  deepIdxSet = new Uint8Array(total);
+  deepCursor = 0;
+  deepDirty = true;
   let i = 0;
   const CHUNK = 300;
   function step() {
@@ -188,6 +252,10 @@ function init(list) {
         rec = null;
       }
       sats[i] = { rec, id: it.id };
+      if (rec && rec.method === 'd') {
+        deepIdx.push(i);
+        deepIdxSet[i] = 1;
+      }
     }
     self.postMessage({ type: 'progress', done: i, total });
     if (i < total) setTimeout(step, 0);
@@ -342,12 +410,14 @@ function runPasses(msg) {
   const hours = msg.hours || 6;
   const minEl = msg.minEl != null ? msg.minEl : 10;
   const indices = (msg.indices || []).slice(0, 80);
-  const token = ++passToken;
+  const kind = msg.kind || 'list';
+  const token = (passTokens.get(kind) || 0) + 1;
+  passTokens.set(kind, token);
   const items = [];
   let i = 0;
   const CHUNK = 4;
   function step() {
-    if (token !== passToken) return;
+    if (passTokens.get(kind) !== token) return;
     const end = Math.min(i + CHUNK, indices.length);
     for (; i < end; i++) {
       const idx = indices[i];
@@ -355,7 +425,7 @@ function runPasses(msg) {
       if (list.length) items.push({ index: idx, passes: list });
     }
     if (i < indices.length) setTimeout(step, 0);
-    else self.postMessage({ type: 'passes', items, fromMs, hours, minEl });
+    else self.postMessage({ type: 'passes', items, fromMs, hours, minEl, kind: msg.kind, requestId: msg.requestId });
   }
   step();
 }
@@ -366,6 +436,9 @@ self.onmessage = (e) => {
     case 'init':
       init(msg.sats || []);
       break;
+    case 'bench':
+      bench();
+      break;
     case 'time':
       clock = {
         baseMs: msg.ms != null ? msg.ms : nowMs(),
@@ -373,6 +446,7 @@ self.onmessage = (e) => {
         rate: msg.rate != null ? msg.rate : clock.rate,
         paused: !!msg.paused,
       };
+      deepDirty = true;
       tick();
       break;
     case 'observer':

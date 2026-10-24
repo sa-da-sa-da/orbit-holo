@@ -22,6 +22,9 @@ uniform float uTime;
 uniform float uGrid;
 uniform float uLandAmt;
 uniform float uOpacity;
+uniform vec3 uSunDir;
+uniform float uTerm;
+uniform float uPrime;
 varying vec2 vUv;
 varying vec3 vN;
 varying vec3 vV;
@@ -49,18 +52,53 @@ void main() {
   grid *= uGrid;
 
   float equator = 1.0 - smoothstep(0.0, 0.03, abs(latDeg) / 180.0);
+  // 本初子午线（0°）与 180° 经线
+  float merW = max(fwidth(lonDeg) * 1.6, 1e-4);
+  float primeMeridian = 1.0 - smoothstep(0.0, merW, abs(lonDeg));
+  float antiMeridian = 1.0 - smoothstep(0.0, merW, abs(abs(lonDeg) - 180.0));
+  // 昼夜：以太阳方向与球面法线夹角判定，smoothstep 让晨昏线有过渡带
+  float sunDot = dot(normalize(vN), normalize(uSunDir));
+  // 昼夜分界：过渡带收窄（约 ±3.5°），夜面压得更暗，白天/黑夜一眼可分
+  float night = smoothstep(0.062, -0.062, sunDot) * uTerm;
+  float dayFac = smoothstep(-0.02, 0.30, sunDot);
+  // 晨昏线：一条细亮线 + 一层很薄的暖色暮光
+  float terminator = exp(-pow(sunDot * 52.0, 2.0)) * uTerm;
+  float twilight = exp(-pow(sunDot * 7.0, 2.0)) * uTerm;
   float sweepY = fract(uTime * 0.045);
   float band = exp(-pow((vUv.y - sweepY) * 26.0, 2.0));
 
-  vec3 col = vec3(0.030, 0.100, 0.140);
-  col = mix(col, vec3(0.100, 0.420, 0.500) * uLandAmt, m * 0.78);
-  col += vec3(0.180, 0.620, 0.760) * grid * (0.50 + 0.50 * m);
-  col += vec3(0.450, 0.950, 1.000) * coast * (0.90 + 0.10 * sin(uTime * 2.2));
-  col += vec3(0.250, 0.850, 1.000) * fres * 1.00;
-  col += vec3(0.120, 0.600, 0.800) * band * 0.30;
-  col += vec3(0.350, 0.920, 1.000) * equator * 0.18;
+  // ---- 地球本色：海洋深蓝、陆地绿棕、极地雪白 ----
+  float absLat = abs(latDeg);
+  vec3 oceanDeep = vec3(0.018, 0.095, 0.190);
+  vec3 oceanShallow = vec3(0.050, 0.270, 0.430);
+  vec3 landGreen = vec3(0.115, 0.330, 0.150);
+  vec3 landDry = vec3(0.520, 0.410, 0.215);
+  vec3 landPolar = vec3(0.720, 0.780, 0.820);
+  float dryBand = exp(-pow((absLat - 26.0) / 12.0, 2.0));
+  vec3 land = mix(landGreen, landDry, clamp(dryBand, 0.0, 1.0) * 0.9);
+  land = mix(land, landPolar, smoothstep(58.0, 76.0, absLat));
+  vec3 ocean = mix(oceanShallow, oceanDeep, smoothstep(0.0, 52.0, absLat) * 0.75);
+  vec3 col = mix(ocean, land, clamp(m * (0.35 + 0.65 * uLandAmt), 0.0, 1.0));
+  // 白天略提亮，让受光面更实
+  col *= mix(0.88, 1.16, dayFac);
+  // 夜面：先压暗到接近黑，再叠加冷色环境光（"夜半球"一眼可辨）
+  vec3 nightTint = vec3(0.030, 0.075, 0.150);
+  col = mix(col, col * 0.13 + nightTint * 0.22, night);
+  // 全息线框在夜里要收敛，否则黑夜看起来还是亮的
+  float lineVis = 1.0 - night * 0.82;
+  col += vec3(0.180, 0.620, 0.760) * grid * (0.30 + 0.40 * m) * lineVis;
+  col += vec3(0.520, 0.980, 1.000) * coast * (1.05 + 0.10 * sin(uTime * 2.2)) * lineVis;
+  col += vec3(0.250, 0.780, 1.000) * fres * 0.85 * lineVis;
+  col += vec3(0.120, 0.600, 0.800) * band * 0.22 * lineVis;
+  col += vec3(0.350, 0.920, 1.000) * equator * 0.18 * lineVis;
+  col += vec3(0.980, 0.760, 0.320) * primeMeridian * uPrime * 0.85 * lineVis;
+  col += vec3(0.540, 0.760, 0.980) * antiMeridian * uPrime * 0.45 * lineVis;
+  // 暮光暖带（很薄）+ 细亮晨昏线
+  col += vec3(1.000, 0.560, 0.230) * twilight * 0.30;
+  col += vec3(1.000, 0.880, 0.560) * terminator * 0.95;
 
-  float a = 0.55 + fres * 0.45 + coast * 0.50 + grid * 0.22 + band * 0.12 + m * 0.15;
+  float a = 0.92 + fres * 0.08 + coast * 0.10 + grid * 0.08 + band * 0.05;
+  a += primeMeridian * uPrime * 0.20 + terminator * 0.30 + twilight * 0.08;
   a = clamp(a, 0.0, 1.0) * uOpacity;
 
   // 极轻微噪点，强化全息质感
@@ -115,11 +153,11 @@ function makeStars(count = 3200) {
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   const mat = new THREE.PointsMaterial({
-    size: 1.5,
+    size: 1.15,
     sizeAttenuation: false,
     vertexColors: true,
     transparent: true,
-    opacity: 0.85,
+    opacity: 0.6,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
@@ -143,6 +181,9 @@ export function createGlobe({ radius = 100, landTexture = null, edgeTexture = nu
     uEdge: { value: edgeTexture },
     uTime: { value: 0 },
     uGrid: { value: 1 },
+  uSunDir: { value: new THREE.Vector3(1, 0, 0) },
+  uTerm: { value: 1 },
+  uPrime: { value: 1 },
     uLandAmt: { value: landTexture ? 1 : 0 },
     uOpacity: { value: 1 },
   };
@@ -183,8 +224,8 @@ export function createGlobe({ radius = 100, landTexture = null, edgeTexture = nu
   stars.renderOrder = -1;
   group.add(stars);
 
-  const layers = { grid: true, atmosphere: true, stars: true, land: true };
-  const target = { grid: 1, atmosphere: 1, stars: 1, land: 1 };
+  const layers = { grid: true, atmosphere: true, stars: true, land: true, terminator: true, meridian: true };
+  const target = { grid: 1, atmosphere: 1, stars: 1, land: 1, terminator: 1, meridian: 1 };
 
   return {
     group,
@@ -197,11 +238,20 @@ export function createGlobe({ radius = 100, landTexture = null, edgeTexture = nu
       if (key === 'land') target.land = on ? 1 : 0;
       if (key === 'atmosphere') atmosphere.visible = !!on;
       if (key === 'stars') stars.visible = !!on;
+      if (key === 'terminator') target.terminator = on ? 1 : 0;
+      if (key === 'meridian') target.meridian = on ? 1 : 0;
     },
     getLayer(key) {
       return layers[key];
     },
+    /** 太阳方向（ECEF 单位向量，世界坐标）→ 驱动晨昏线 */
+    setSunDir(v) {
+      if (!v) return;
+      uniforms.uSunDir.value.set(v.x, v.y, v.z).normalize();
+    },
     update(dt, elapsed) {
+      uniforms.uTerm.value += (target.terminator - uniforms.uTerm.value) * Math.min(1, dt * 8);
+      uniforms.uPrime.value += (target.meridian - uniforms.uPrime.value) * Math.min(1, dt * 8);
       uniforms.uTime.value = elapsed;
       uniforms.uGrid.value += (target.grid - uniforms.uGrid.value) * Math.min(1, dt * 8);
       uniforms.uLandAmt.value += (target.land * (landTexture ? 1 : 0) - uniforms.uLandAmt.value) * Math.min(1, dt * 8);

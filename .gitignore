@@ -18,3 +18,5 @@ desktop.ini
 
 # 本地备份目录（脚本中可能引用 *.gitkeep 以外的临时备份）
 *-BACKUP-*/
+# 凭据（不入库）
+data/.spacetrack.env

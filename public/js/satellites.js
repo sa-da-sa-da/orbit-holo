@@ -7,29 +7,48 @@ attribute float aSize;
 attribute float aHidden;
 uniform float uPixelRatio;
 uniform float uScale;
+uniform float uMinSize;
+uniform float uEarthR;
 varying vec3 vColor;
+varying float vBoost;
 void main() {
   vColor = color;
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
   float d = max(-mv.z, 1.0);
-  float s = aSize * uScale * (uPixelRatio * 260.0 / d);
-  float ps = clamp(s, 1.35 * uPixelRatio, 20.0);
-  gl_PointSize = mix(ps, 0.0, step(0.5, aHidden));
+  // 距离衰减放缓（指数 0.72）：远处的 GEO/高轨目标不再缩成一个暗点
+  float atten = pow(260.0 / d, 0.72);
+  float s = aSize * uScale * uPixelRatio * atten * 1.50;
+  float ps = clamp(s, uMinSize * uPixelRatio, 30.0);
+  // 地球遮挡：视线与地球球体相交时整点丢弃（避免"穿模"看到球背面的卫星）
+  vec3 rd = normalize(position - cameraPosition);
+  float b = dot(cameraPosition, rd);
+  float c = dot(cameraPosition, cameraPosition) - uEarthR * uEarthR;
+  float h = b * b - c;
+  float occluded = 0.0;
+  if (h > 0.0) {
+    float t = -b - sqrt(h);
+    if (t > 0.0 && t < distance(position, cameraPosition)) occluded = 1.0;
+  }
+  gl_PointSize = mix(ps, 0.0, max(step(0.5, aHidden), occluded));
+  // 越远越提亮，避免与背景星空混淆
+  vBoost = mix(1.0, 1.5, smoothstep(260.0, 900.0, d));
 }
 `;
 
 const SAT_FRAG = /* glsl */`
 uniform float uOpacity;
 varying vec3 vColor;
+varying float vBoost;
 void main() {
   vec2 c = gl_PointCoord - 0.5;
   float d = length(c);
   if (d > 0.5) discard;
   float core = smoothstep(0.5, 0.0, d);
   float a = pow(core, 1.7);
-  vec3 col = vColor * (0.45 + 1.05 * a);
-  gl_FragColor = vec4(col, a * uOpacity);
+  // 远处目标：核心更实、亮度更高，保证与星空可分辨
+  vec3 col = vColor * (0.58 + 1.30 * a) * vBoost;
+  gl_FragColor = vec4(col, min(1.0, a * uOpacity * vBoost));
 }
 `;
 
@@ -52,6 +71,8 @@ export function createSatLayer({ count, pixelRatio = 1 }) {
       uPixelRatio: { value: pixelRatio },
       uOpacity: { value: 1 },
       uScale: { value: 1 },
+    uMinSize: { value: 4.0 },
+    uEarthR: { value: 100.0 },
     },
     vertexShader: SAT_VERT,
     fragmentShader: SAT_FRAG,
@@ -98,6 +119,9 @@ export function createSatLayer({ count, pixelRatio = 1 }) {
     },
     setOpacity(v) {
       material.uniforms.uOpacity.value = v;
+    },
+    setMinSize(v) {
+      material.uniforms.uMinSize.value = v;
     },
     setScale(v) {
       material.uniforms.uScale.value = v;
@@ -183,7 +207,7 @@ export function createSatLayer({ count, pixelRatio = 1 }) {
 
 const EARTH_OCCLUDE_R = 99.0;
 /** 地球是否挡住了相机与该点的连线（相机、球心在原点） */
-function occludedByEarth(camera, x, y, z) {
+export function occludedByEarth(camera, x, y, z) {
   const ox = camera.position.x;
   const oy = camera.position.y;
   const oz = camera.position.z;
@@ -206,12 +230,41 @@ export function createOrbitLine({ color = 0x5ef0ff, opacity = 0.5, linewidth = 1
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
   geometry.setDrawRange(0, 0);
   geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 4000);
-  const material = new THREE.LineBasicMaterial({
-    color,
+  // 自定义材质：与卫星点一致做「地球遮挡剔除」，避免轨道线穿过地球（穿模）
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(color) },
+      uOpacity: { value: opacity },
+      uEarthR: { value: 100.0 },
+    },
+    vertexShader: `
+      varying vec3 vWorld;
+      void main() {
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWorld = wp.xyz;
+        gl_Position = projectionMatrix * viewMatrix * wp;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      uniform float uEarthR;
+      varying vec3 vWorld;
+      void main() {
+        vec3 rd = normalize(vWorld - cameraPosition);
+        float b = dot(cameraPosition, rd);
+        float c = dot(cameraPosition, cameraPosition) - uEarthR * uEarthR;
+        float h = b * b - c;
+        if (h > 0.0) {
+          float t = -b - sqrt(h);
+          if (t > 0.0 && t < distance(vWorld, cameraPosition)) discard;
+        }
+        gl_FragColor = vec4(uColor, uOpacity);
+      }
+    `,
     transparent: true,
-    opacity,
-    depthWrite: false,
     blending: THREE.AdditiveBlending,
+    depthWrite: false,
   });
   const line = closed ? new THREE.LineLoop(geometry, material) : new THREE.Line(geometry, material);
   line.frustumCulled = false;
@@ -230,10 +283,12 @@ export function createOrbitLine({ color = 0x5ef0ff, opacity = 0.5, linewidth = 1
       geometry.setDrawRange(0, 0);
     },
     setColor(c) {
-      material.color.set(c);
+      if (material.uniforms && material.uniforms.uColor) material.uniforms.uColor.value.set(c);
+      else if (material.color) material.color.set(c);
     },
     setOpacity(o) {
-      material.opacity = o;
+      if (material.uniforms && material.uniforms.uOpacity) material.uniforms.uOpacity.value = o;
+      else material.opacity = o;
     },
     setVisible(v) {
       line.visible = v;

@@ -20,8 +20,11 @@ export const CATEGORY_DEFS = {
   science: { label: '科学 / 深空 / 载人', labelEn: 'Science & Human' },
   tech:    { label: '技术试验 / 教育 / 业余', labelEn: 'Tech Demo & Education' },
   other:   { label: '其他 / 未分类',     labelEn: 'Other' },
+  debris:  { label: '碎片 / 残骸',       labelEn: 'Debris & Rocket Bodies' },
+  station: { label: '空间站 / 载人',     labelEn: 'Stations & Crew' },
 };
-export const CATEGORY_ORDER = ['comms', 'nav', 'eo', 'mil', 'weather', 'science', 'tech', 'other'];
+// V5 debisr 第 9 类；V20 §41 新增第 10 类 station（追加在末尾，前 9 类顺序不变）
+export const CATEGORY_ORDER = ['comms', 'nav', 'eo', 'mil', 'weather', 'science', 'tech', 'other', 'debris', 'station'];
 
 const K = {
   company: 'company', agency: 'agency', military: 'military',
@@ -324,6 +327,85 @@ const RULES = [
 ];
 
 /* ------------------------------------------------------------------ */
+/* V5 §20.5 天文望远镜识别表（精确名白名单 + 关键字兜底）                */
+/* ------------------------------------------------------------------ */
+// 注意：CelesTrak 里 Chandra 叫 CXO、Fermi 早期叫 FGRST (GLAST)、ISRO 的 IRIS 与太阳 IRIS 同名，
+// 所以这里用「精确名」而非宽泛正则，避免把 IRIS-F2 / LEMUR-2-HUBBLE-4 / ITAMSAT 之类误判成望远镜。
+export const TELESCOPE_TABLE = {
+  // 光学
+  'HST': 'optical', 'HUBBLE SPACE TELESCOPE': 'optical', 'CHEOPS': 'optical', 'CSST': 'optical', 'MOST': 'optical',
+  // X 射线
+  'CXO': 'xray', 'CHANDRA': 'xray', 'XMM-NEWTON': 'xray', 'XMM': 'xray', 'NUSTAR': 'xray', 'IXPE': 'xray',
+  'HXMT (HUIYAN)': 'xray', 'HXMT': 'xray', 'GECAM-A': 'xray', 'GECAM-B': 'xray',
+  'EINSTEIN PROBE': 'xray', 'EP': 'xray', 'ASTROSAT': 'xray', 'SRG': 'xray', 'SPEKTR-RG': 'xray', 'SMILE': 'xray',
+  // 伽马
+  'FGRST (GLAST)': 'gamma', 'FERMI': 'gamma', 'FERMI GAMMA SPACE TELESCOPE': 'gamma',
+  'SWIFT': 'gamma', 'AGILE': 'gamma', 'INTEGRAL': 'gamma', 'DAMPE': 'gamma',
+  // 红外
+  'JWST': 'ir', 'JWST (JAMES WEBB)': 'ir', 'WISE': 'ir', 'SPITZER': 'ir',
+  // 太阳
+  'SDO': 'solar', 'SOHO': 'solar', 'STEREO-A': 'solar', 'STEREO-B': 'solar', 'IRIS': 'solar',
+  'HINODE (SOLAR-B)': 'solar', 'HINODE': 'solar', 'SOLAR ORBITER': 'solar', 'ASO-S': 'solar',
+  'HISAKI (SPRINT-A)': 'solar',
+  // 粒子 / 宇宙线
+  'AMS-02': 'particle', 'CALET': 'particle',
+};
+
+/**
+ * 判断是否天文/空间科学望远镜。
+ * @returns {{ isTelescope: boolean, telescopeType: string|null, confidence: 'high'|'medium'|null, note: string }}
+ */
+export function detectTelescope(name) {
+  const raw = String(name || '').trim();
+  const key = raw.toUpperCase();
+  const hit = TELESCOPE_TABLE[key];
+  if (hit) return { isTelescope: true, telescopeType: hit, confidence: 'high', note: '望远镜白名单：' + key };
+  // §20.5 关键字兜底（medium）
+  if (/TELESCOPE/i.test(raw)) return { isTelescope: true, telescopeType: 'optical', confidence: 'medium', note: '名称含 TELESCOPE 关键字' };
+  if (/\bXMM\b/.test(key)) return { isTelescope: true, telescopeType: 'xray', confidence: 'medium', note: '名称含 XMM 关键字' };
+  if (/\bHST\b/.test(key)) return { isTelescope: true, telescopeType: 'optical', confidence: 'medium', note: '名称含 HST 关键字' };
+  return { isTelescope: false, telescopeType: null, confidence: null, note: '' };
+}
+
+/* ------------------------------------------------------------------ */
+/* V7 §28 空间站 / 载人飞船识别                                        */
+/* ------------------------------------------------------------------ */
+// station = 常驻空间站舱段；crew = 载人飞船；cargo = 货运飞船
+// 注意排除 CelesTrak 里 "ISS OBJECT YM/YN/..."（从 ISS 释放/关联的通用命名对象，不是舱段），
+// 所以舱段规则只认 "ISS (模块名)" 这种带括号的写法。
+export const STATION_RULES = [
+  [/^ISS\s*\(/i,                                                     'station', 'ISS 舱段'],
+  [/^(POISK|PRICHAL|NAUKA|ZARYA|ZVEZDA|UNITY|DESTINY|HARMONY|TRANQUILITY|COLUMBUS|KIBO|CUPOLA|BISHOP|BEAM)$/i,
+                                                                        'station', '空间站舱段'],
+  [/^CSS\b|^(TIANHE|WENTIAN|MENGTIAN)$|天宫|天和|问天|梦天/i,             'station', '中国空间站舱段'],
+  [/^CREW DRAGON\b/i,                                                  'crew', '载人龙飞船'],
+  [/^STARLINER\b/i,                                                    'crew', '波音星际客机'],
+  [/^SOYUZ\b|^SOYUZ-|^SOYUZ MS/i,                                       'crew', '联盟号载人飞船'],
+  [/^SHENZHOU\b|^SZ-\d{2,}(\s+MODULE)?$/i,                            'crew', '神舟载人飞船'],
+  [/^TIANZHOU\b/i,                                                     'cargo', '天舟货运飞船'],
+  [/^PROGRESS\b/i,                                                     'cargo', '进步号货运飞船'],
+  [/^CYGNUS\b/i,                                                       'cargo', '天鹅座货运飞船'],
+  [/^HTV\b|^HTV-\d|^KOUNOTORI/i,                                       'cargo', 'HTV 货运飞船'],
+  [/^CARGO DRAGON\b|^DRAGON\b.*\bCRS\b/i,                            'cargo', '货运龙飞船（CRS 任务）'],
+  // Space-Track 把载人龙按返回舱命名（如 DRAGON GRACE 2），CelesTrak 叫 CREW DRAGON 13；不含 CRS 的裸 DRAGON 一律按载人处理。
+  [/^DRAGON\b/i,                                                       'crew', '载人龙飞船'],
+];
+
+/**
+ * 判断是否空间站 / 载人飞船 / 货运飞船。
+ * @returns {{ isStation: boolean, stationType: 'station'|'crew'|'cargo'|null, note: string }}
+ */
+export function detectStation(name) {
+  const raw = String(name || '').trim();
+  // 碎片/残骸（如 "TIANZHOU X DEB"、"SOYUZ DEB"）不是空间站本身，先排除
+  if (/\b(DEB|R\/B)\s*$/i.test(raw)) return { isStation: false, stationType: null, note: '' };
+  for (const [re, type, note] of STATION_RULES) {
+    if (re.test(raw)) return { isStation: true, stationType: type, note };
+  }
+  return { isStation: false, stationType: null, note: '' };
+}
+
+/* ------------------------------------------------------------------ */
 /* owner 兜底（无名称命中时）：code + 中文名 + kind=unknown              */
 /* ------------------------------------------------------------------ */
 const OWNER_LABEL = {
@@ -350,6 +432,226 @@ const OWNER_LABEL = {
 // 这些 owner 本身是机构，兜底时用 agency/intergov 更准确
 const OWNER_KIND = { ESA: K.intergov, ISS: K.intergov, EUME: K.intergov, ITSO: K.company, IM: K.company, SES: K.company, O3B: K.company, EUTE: K.company };
 
+
+/* ================================================================== */
+/* V20 §41 二级分类（专业细分，48 个二级键，覆盖 10 个一级类目）          */
+/* ================================================================== */
+export const SUBCATEGORY_DEFS = {
+  // ── comms 通信（7）────────────────────────────────────────────────
+  'broadband':        { label: '宽带互联网',   labelEn: 'Broadband',      cat: 'comms' },
+  'geo-comms':        { label: '静止轨道通信', labelEn: 'GEO Comms',      cat: 'comms' },
+  'mobile':           { label: '移动通信',     labelEn: 'Mobile Comms',   cat: 'comms' },
+  'relay':            { label: '数据中继',     labelEn: 'Data Relay',     cat: 'comms' },
+  'amateur':          { label: '业余无线电',   labelEn: 'Amateur Radio',  cat: 'comms' },
+  'broadcast':        { label: '广播/直播电视', labelEn: 'Broadcast',     cat: 'comms' },
+  'other-comms':      { label: '其它通信',     labelEn: 'Other Comms',    cat: 'comms' },
+  // ── nav 导航（3）──────────────────────────────────────────────────
+  'gnss-core':        { label: 'GNSS 核心星座', labelEn: 'GNSS Core',     cat: 'nav' },
+  'sbas':             { label: '星基增强',     labelEn: 'SBAS',           cat: 'nav' },
+  'other-nav':        { label: '其它导航/授时', labelEn: 'Other Navigation', cat: 'nav' },
+  // ── eo 对地观测（5）───────────────────────────────────────────────
+  'optical':          { label: '光学成像',     labelEn: 'Optical Imaging', cat: 'eo' },
+  'sar':              { label: '合成孔径雷达', labelEn: 'SAR Imaging',    cat: 'eo' },
+  'hyperspectral':    { label: '高光谱/多光谱', labelEn: 'Hyperspectral',  cat: 'eo' },
+  'video':            { label: '视频遥感',     labelEn: 'Video Imaging',  cat: 'eo' },
+  'other-eo':         { label: '其它遥感',     labelEn: 'Other EO',       cat: 'eo' },
+  // ── mil 军事（7）──────────────────────────────────────────────────
+  'optical-recon':    { label: '光学侦察',     labelEn: 'Optical Recon',  cat: 'mil' },
+  'radar-recon':      { label: '雷达成像侦察', labelEn: 'Radar Recon',    cat: 'mil' },
+  'sigint':           { label: '电子侦察/频谱监测', labelEn: 'SIGINT',    cat: 'mil' },
+  'early-warning':    { label: '导弹预警',     labelEn: 'Early Warning',  cat: 'mil' },
+  'military-comms':   { label: '军用通信',     labelEn: 'Military Comms', cat: 'mil' },
+  'unknown-military': { label: '军用但用途不明', labelEn: 'Unknown Military', cat: 'mil' },
+  'other-mil':        { label: '其它军事',     labelEn: 'Other Military', cat: 'mil' },
+  // ── weather 气象/海洋/环境（4）────────────────────────────────────
+  'meteorology':      { label: '气象',         labelEn: 'Meteorology',    cat: 'weather' },
+  'ocean':            { label: '海洋',         labelEn: 'Oceanography',   cat: 'weather' },
+  'environment':      { label: '环境/温室气体', labelEn: 'Environment',    cat: 'weather' },
+  'other-weather':    { label: '其它气象环境', labelEn: 'Other Weather',  cat: 'weather' },
+  // ── science 科学（7）──────────────────────────────────────────────
+  'telescope':        { label: '天文望远镜',   labelEn: 'Telescope',      cat: 'science' },
+  'solar':            { label: '太阳观测',     labelEn: 'Solar Physics',  cat: 'science' },
+  'earth-science':    { label: '地球科学',     labelEn: 'Earth Science',  cat: 'science' },
+  'space-physics':    { label: '空间物理/粒子', labelEn: 'Space Physics',  cat: 'science' },
+  'life-science':     { label: '生命科学',     labelEn: 'Life Science',   cat: 'science' },
+  'geodesy':          { label: '大地测量',     labelEn: 'Geodesy',        cat: 'science' },
+  'other-science':    { label: '其它科学',     labelEn: 'Other Science',  cat: 'science' },
+  // ── tech 技术试验（4）─────────────────────────────────────────────
+  'tech-demo':        { label: '技术验证',     labelEn: 'Tech Demo',      cat: 'tech' },
+  'education':        { label: '教育/大学立方星', labelEn: 'Education',    cat: 'tech' },
+  'servicing':        { label: '在轨服务/离轨', labelEn: 'Servicing',     cat: 'tech' },
+  'other-tech':       { label: '其它技术试验', labelEn: 'Other Tech',     cat: 'tech' },
+  // ── station 空间站/载人（3）───────────────────────────────────────
+  'station-module':   { label: '空间站舱段',   labelEn: 'Station Module', cat: 'station' },
+  'crew':             { label: '载人飞船',     labelEn: 'Crew Vehicle',   cat: 'station' },
+  'cargo':            { label: '货运飞船',     labelEn: 'Cargo Vehicle',  cat: 'station' },
+  // ── debris 碎片/残骸（3）──────────────────────────────────────────
+  'fragmentation':    { label: '解体/碰撞碎片', labelEn: 'Fragmentation Debris', cat: 'debris' },
+  'rocket-body':      { label: '火箭残骸/上面级', labelEn: 'Rocket Body',  cat: 'debris' },
+  'inactive':         { label: '失效载荷',     labelEn: 'Inactive Payload', cat: 'debris' },
+  // ── other 其他（5）────────────────────────────────────────────────
+  'unclassified-military': { label: '疑似军用/用途不明', labelEn: 'Unclassified Military', cat: 'other' },
+  'unnamed-object':   { label: '官方未命名对象', labelEn: 'Unnamed Object', cat: 'other' },
+  'historical':       { label: '早期历史卫星', labelEn: 'Historical',     cat: 'other' },
+  'interplanetary':   { label: '行星际/深空探测', labelEn: 'Interplanetary', cat: 'other' },
+  'unknown':          { label: '信息缺失',     labelEn: 'Unknown',        cat: 'other' },
+};
+
+/** category → 允许的二级键（用于自洽校验） */
+export const CATEGORY_SUBCATS = (() => {
+  const m = {};
+  for (const [k, v] of Object.entries(SUBCATEGORY_DEFS)) {
+    (m[v.cat] = m[v.cat] || []).push(k);
+  }
+  return m;
+})();
+
+// 规则：[正则, 二级键, 可选的一级类目覆盖]
+const SUB_RULES = [
+  // ── 通信 ──
+  [/^STARLINK|^ONEWEB|^KUIPER|^QIANFAN|^HULIANWANG|^GUOWANG|^GW-/i, 'broadband', 'comms'],
+  [/^TDRS|^EDRS|^TIANLIAN|^LUCH|^SDRN/i, 'relay', 'comms'],
+  [/AMSAT|OSCAR|^AO-\d|^SO-\d|^CO-\d|^FO-\d|^IO-\d|^NO-\d|^RS\d|ITAMSAT|SAMSAT|^RADIO ROSTO|^HAMSAT|^FOX-1|^LUSAT/i, 'amateur', 'comms'],
+  [/^IRIDIUM|^GLOBALSTAR|^ORBCOMM|^INMARSAT|^THURAYA|^GONETS|^KINEIS|^ASTROCAST|^CENTAURI|^SPACEMOBILE|^LYNK|^SITRO|^TIANQI|^GEESAT|^AISSAT|^NADEZHDA|^MARISAT|^MARECS|^MUOS|^ACES/i, 'mobile', 'comms'],
+  [/^DIRECTV|^SIRIUS|^SXM-|^ECHOSTAR|^TVSAT|^TDF-|^TELE-X|^BS-3|^BSS|^SAKURA|^YURI|^JCSAT|^BSAT|^SUPERBIRD|^N-STAR|^SOLIDARIDAD/i, 'broadcast', 'comms'],
+  [/EUTELSAT|^INTELSAT|^IS-\d|^SES[ -]|^O3B|^ASTRA|^NSS-|^AMC-|CHINASAT|ZHONGXING|^APSTAR|^ASIASAT|^RADUGA|^GORIZONT|^EKRAN|^STTW|^TELECOM|^DFH|^EXPRESS|^YAMAL|^ABS-|^ARABSAT|^TURKSAT|^KOREASAT|^OPTUS|^ANIK|^NIMIQ|^TELSTAR|^AMAZONAS|^GALAXY|^SATCOM|^TELKOM|^PALAPA|^SBS-|^BRAZILSAT|^THOR\b|^AMOS-|^WESTAR|^MEASAT|^NILESAT|^GSTAR|^STAR ONE|^HISPASAT|^SPACENET|^MORELOS|^PAKSAT|^KAZSAT|^EGYPTSAT|^NIGERIASAT|^SPAINSAT|^HORIZONS|^BADR|^HYLAS|^VIASAT|^ITALSAT|^SYMPHONIE|^COMSTAR|^SYNCOM|^RELAY\b|^ACTS\b|^OLYMPUS|^SINOSAT|^TELSTAR|^ASIASAT|^ARABSAT|^CENTAURI|^EUTELSAT/i, 'geo-comms', 'comms'],
+  // ── 导航 ──
+  [/^NAVSTAR|^GPS[ -]?\d|^GPS [A-Z]|GLONASS|URAGAN|GALILEO|^GSAT0\d|^BEIDOU|^BD-|北斗|^QZS|QZSS|MICHIBIKI|^IRNSS|NAVIC/i, 'gnss-core', 'nav'],
+  [/WAAS|EGNOS|GAGAN|SDCM|SBAS|^OMNI-[ML]\d/i, 'sbas', 'nav'],
+  [/^TRANSIT|^TIMATION|^NOVA\b|^NAVSPASUR|^PARUS|^TSIKADA|^TSIKLON|^CENTISPACE|^GEESAT/i, 'other-nav', 'nav'],
+  // ── 对地观测 ──
+  [/SENTINEL-1|TERRASAR|SKYMED|^COSMO|RADARSAT|^ICEYE|^CAPELLA|^UMBRA|QPS-SAR|^STRIX|^PIESAT|^SAR-|^RISAT|^SAOCOM|^PAZ\b|^ALOS-2|^HJ-1C|^KOMPSAT-5|^KOMPSAT-3A/i, 'sar', 'eo'],
+  [/ENMAP|^PRISMA\b|ZHUHAI|^GF-5|HISUI|HYPERS?PECTRAL|^ZY-1 02D/i, 'hyperspectral', 'eo'],
+  [/^SKYSAT|BLACKSKY|^PELICAN|VIDEO/i, 'video', 'eo'],
+  [/^SENTINEL-2|^LANDSAT|WORLDVIEW|GEOEYE|QUICKBIRD|^GAOFEN|^GF-\d|^JILIN|^FLOCK|^PLANET\b|^DOVE|^SPOT|^ERS-|^CBERS|^RESURS|^IRS\b|ARIRANG|^KOMPSAT|^DMC|RAPIDEYE|^FORMOSAT|^THEOS|^DEIMOS|^NUSAT|^GRUS|^GHGSAT|^AAC|^ASNARO|^VNREDSAT|^UK-DMC|^TOPSAT|^PERUSAT|^KAZEOSAT|^DUBAISAT|^ALOS|^SUPERVIEW|^NINGXIA|^HEAD-|^TIANHUI|^ZHUHAI|^HJ-|^ZY-|^ZIYUAN/i, 'optical', 'eo'],
+  // ── 军事 ──
+  [/DSP\b|^SBIRS|^MIDAS|^VELA\b|^IMEWS|^NTS\b|预警/i, 'early-warning', 'mil'],
+  [/^HAWK|^BRO-|^NORSAT|ELISA|ESSAIM|VIGORIDE|^MENTOR|^ORION\b|^MAGNUM|^TRUMPET|^SSU\b/i, 'sigint', 'mil'],
+  [/LACROSSE|ONYX|^TOPAZ|SAR-LUPE|^HELIOS[ -]?2|^USA .*RADAR/i, 'radar-recon', 'mil'],
+  [/^YAOGAN|^YG-|^KH-|^HELIOS\b/i, 'optical-recon', 'mil'],
+  [/^AEHF|^MILSTAR|^WGS|^SKYNET|^UFO |^FLTSATCOM|^LEASAT|^DSCS|^NATO|^SYRACUSE|^SICRAL/i, 'military-comms', 'mil'],
+  [/^COSMOS|^USA[ -]?\d|^OBJECT [A-Z]{1,3}$/i, 'unknown-military', 'mil'],
+  [/^PRAETORIAN|^CHECKMATE|^SDA|^LEGION|^BLACKJACK|^GSSAP|^SDS-|^X-37B|^OTV\b/i, 'other-mil', 'mil'],
+  [/^LEMUR/i, 'other-eo', 'eo'],
+  [/^CHUANG/i, 'other-comms', 'comms'],
+  [/^GJZ|^SKYCRAFT|^VSP\b|^PAYLOAD/i, 'tech-demo', 'tech'],
+  // ── 气象 / 海洋 / 环境 ──
+  [/^NOAA|^GOES|^EWS-G|^FENGYUN|^FY-|风云|^HIMAWARI|^METOP|^METEOSAT|^METEOR|^TIROS|^ESSA|^NIMBUS|^DMSP|^ELEKTRO|^INSAT|^SMOS|^ITOS|^SMS\b|^GOMS/i, 'meteorology', 'weather'],
+  [/^JASON|SENTINEL-6|^HY-|^HAIYANG|^SARAL|^OCEANSAT|^SCATSAT|^SENTINEL-3|^SWOT|^TOPEX|^SEASAT|^GCOM/i, 'ocean', 'weather'],
+  [/^OCO|^GHGSAT|SENTINEL-5P|^AURA\b|^ENVISAT/i, 'environment', 'weather'],
+  // ── 科学 ──
+  [/^SDO$|^SOHO|^STEREO|^ASO-S|^HINODE|^IRIS$|^HISAKI|SOLAR ORBITER|^YOHKOH|^HINOTORI|^KYOKKO/i, 'solar', 'science'],
+  [/^GRACE|^SWARM|^CHAMP|^ICESAT|^AQUA$|^TERRA$|^AURA$|^SMAP|^CLOUDSAT|^CALIPSO|^AEOLUS/i, 'earth-science', 'science'],
+  [/^MMS|^THEMIS|^ARTEMIS|^CLUSTER|^PUNCH|^EXPLORER|^SOLRAD|^OGO|^OAO|^IUE|^HEAO|^EUVE|^COMPTON|^ISEE|^IMP-|^INTERBALL|^MAGION|^AUREOLE|^INTERCOSMOS|^WIND$|^GEOTAIL|^POLAR$|^FAST$|^IMAGE$|^IBEX|^RBSP|^VAN ALLEN|^GRANAT|^AKARI|^HAKUCHO|^ASTRO-|^TENMA|^GINGA|^SIRIO/i, 'space-physics', 'science'],
+  [/^SECOR|LAGEOS|^ETALON|^STARLETTE|^STELLA|^AJISAI|^GEOS-\d|^GEOSAT|^CALSPHERE|^PAGEOS|^DIADEME|^ANNA|^SURCAL|^TEMPSAT|^PORCUPINE|^DAG\b|^GGSE|^BC-?4|^TOPO\b/i, 'geodesy', 'science'],
+  [/^BION|^FOTON|^BIOSAT|^PHOTON/i, 'life-science', 'science'],
+  // ── 行星际（归 other/interplanetary）──
+  [/^PIONEER|^MARINER|^VENERA|^VIKING|^VOYAGER|^GIOTTO|^CLEMENTINE|^NOZOMI|^MARS\b|^JUNO|^DAWN|^CONTOUR|^SAKIGAKE|^SUISEI|^LUNAR|^CHANDRAYAAN|^CHANG|^APOLLO|^LADEE|^GRAIL|^KAGUYA|^MUSES|^HAYABUSA|^NEW HORIZONS|^ROSETTA|^MESSENGER|^CASSINI|^ULYSSES|^VEGA\b|^PHOBOS|^FOBOS|^LUNOKHOD|^ZOND/i, 'interplanetary', 'other'],
+  // ── 技术试验 / 教育 ──
+  [/^MEV-|REMOVEDEBRIS|DEORBITSAIL|^ELSA|^ION SCV|^MISSION EXTENSION|^ELSA-D/i, 'servicing', 'tech'],
+  [/^CUBESAT|^NANOSAT|^PICOSAT|^UNISAT|^TUBSAT|^AAUSAT|^BEESAT|^UWE-|^DTUSAT|^CUTE|^CANX|^QB50|^BRITE|^HORYU|^FITSAT|^ITUPSAT|^ZACUBE|^SWISSCUBE|^TRITON|^ESTCUBE|^PCSAT|^DELFI|^VELOX|^GOMX|^WREN|^TECH|^CUBIC|^KITSAT|^POSAT|^FAISAT|^TMSAT|^TZINGHUA|^SSETI|^CINEMA|^RAX|^O\/OREOS|^FUNSAT|^APRIZESAT|^TEVEL|^AEROCUBE|^FOSSASAT|^CUBY|^NETSAT|^GEOSCAN|^FOREST|^S-NET|^KL-|^SDS-\d|^KOYOH|^XCUBE|^VINDLER|^MENUT|^TANSUO/i, 'education', 'tech'],
+  [/^SHIYAN|^SY-|^SHIJIAN|^SJ-|^TJS|^STARLING|^AETHER|^DISKSAT|^YAM\b|^XSS|^STEX|^MIGHTYSAT|^ANGELS|^KIKU|^ETS-|^DUMMY|^RUBIN|^PROITERES|^STARS\b|^KKS|^SPRITE|^SOHLA|^KAGAYAKI|^HAYATO|^EQUULEUS|^TRICOM|^ELISA\b|^STRV|^NANORACKS|^POPSAT|^OPTOS|^PRISM\b/i, 'tech-demo', 'tech'],
+  // ── V20 第二轮：长尾补齐（GEO 通信品牌 / 遥感计划 / 科学任务 / 技术试验 / 军用计划）──
+  [/^EUTE\b|^XM-\d|^SBS\b|^AMOS\b|^ABS\b|^STARONE|^SPACEWAY|^NSTAR|^PAS-|^AGILA|^CS-?\d|^TDF-|^DFS-|^HGS-|^GALS|^NIGCOMSAT|^RASCOM|^VINASAT|^YAHSAT|^AZERSPACE|^ARSAT|^ANGOSAT|^MEXSAT|^TKSAT|^SGDC|^BULGARIASAT|^ALCOMSAT|^BELINTERSAT|^KAZSTSAT|^TURKMENALEM|^BRISAT|^IPSTAR|^WILDBLUE|^ALPHASAT|^COMSATBW|^ASIASTAR|^AFRISTAR|^AMSC|^MSAT-|^SESAT|^ESTRELA|^SINAH|^VENESAT|^CIEL-|^XTAR|^ICO\b|^TERRESTAR|^SKYTERRA|^KALPANA|^GARUDA|^OTS-|^S80\/T|^INDOSTAR|^SUOMI100|^H2SAT|^KOREASAT|^JCSAT|^BSAT|^SUPERBIRD|^OPTUS|^OPTUS/i, 'geo-comms', 'comms'],
+  [/^SATELIOT|^HORUS|^CONNECTA|^AISSAT|^VESSELSAT|^M2M/i, 'mobile', 'comms'],
+  [/^RADIO[- ]|^RADIO$|^XW-|^CAS-|^HO-|^BEESAT|^LILACSAT|^JY1SAT/i, 'amateur', 'comms'],
+  // 遥感
+  [/^OKEAN|^RESOURCESAT|^ADEOS|^ALOS|^RCM\b|^CSG-|^EOS-[468]|^TELEOS|^DS-EO|^MISRSAT|^KHALIFASAT|^PRSS|^NOVASAR|^CFOSAT|^HYPSO|^EARTHCARE|^METHANESAT|^ORBVIEW|^IKONOS|^SDGSAT|^EROS-|^KOMPSAT|^HJ-2|^ZY-3|^ZY-2|^GAOFEN|^TH-|^PNEO|^AMAZONIA|^CBERS|^MISR|^SEAHAWK/i, 'optical', 'eo'],
+  // 科学
+  [/^SWAS|^IRAS|^COBE|^WMAP|^GALEX|^SORCE|^CORIOLIS|^TIMED|^MSX\b|^FUSE|^HETE|^ICON\b|^TESS|^XRISM|^XPOSAT|^EUCLID|^KPLO|^CAPSTONE|^QUEQIAO|^ADITYA|^PSYCHE|^LUCY|^ISO\b|^HIPPARCOS|^HALCA|^ALEXIS|^HILAT|^CRRES|^SCATHA|^CCE\b|^ASTRON|^IUE|^SIRTF|^ARASE|^DEMETER|^DOUBLESTAR|^CASSIOPE|^ZHANGHENG|^MKA-FKI|^KORONAS|^SPEKTR|^QUAKESAT|^SCISAT|^HETE|^SORCE|^IBEX|^SWIFT/i, 'other-science', 'science'],
+  [/^QUIKSCAT|^SEASAT|^TOPEX|^JASON|^SMOS|^SEAHAWK/i, 'ocean', 'weather'],
+  // 技术试验 / 教育 / 立方星
+  [/^FALCONSAT|^JAWSAT|^OPAL\b|^ASUSAT|^SEDSAT|^MUBLCOM|^MEGSAT|^TIUNGSAT|^NSAT|^ROCSAT|^KAISTSAT|^BILSAT|^ST5-|^STRAND|^CINEMA|^BPA\b|^ALICE|^MCUBED|^IPEX|^FUNCUBE|^HINCUBE|^PUCP|^UKUBE|^DX\b|^TDS-|^BUGSAT|^TABLETSAT|^ANTELSAT|^POLYITAN|^TIGRISAT|^AISAT|^PRATHAM|^PISAT|^RAVAN|^OPTICUBE|^CELTEE|^PATHFINDER|^SMDC|^CSSWE|^CXBN|^CP3|^CP4|^CP5|^RAX|^O\/OREOS|^DUMSAT|^FEDSAT|^WEOS|^MICRO\b|^TRAILBLAZER|^CHIPSAT|^LARETS|^SLOSHSAT|^OICETS|^INDEX\b|^STUDSAT|^TISAT|^SEEDS|^BLITS|^XIWANG|^YOUTHSAT|^TACSAT|^JUGNU|^SRMSAT|^STSAT|^ICUBE|^NEE\b|^POPACS|^WNISAT|^PROPCUBE|^CHUBUSAT|^SPARK\b|^TEN-KOH|^MANDRAKE|^POEM|^KONDOR|^NANOFF|^PE2\b|^POLYTECH|^NUVIEW|^FLYLAB|^NANOACE|^MAKERSAT|^DSAT\b|^NEXSAT|^T2V|^PRETTY|^ORBASTRO|^PLATERO|^GENMAT|^SPACEVAN|^SPIP|^IMPULSE|^PROTOMETHEE|^OBSERVER-1A|^MALLIGYONG|^DOORY|^ALISIO|^TAIJING|^ZHIXING|^TIRSAT|^MUSAT|^SONATE|^CONTECSAT|^TIGER-|^JACKAL|^MESON|^LIZZIESAT|^HAMMER|^EXO-0|^MOLA\b|^TSAT|^NEONSAT|^ACS\b|^ICECUBE|^PREFIRE|^DRO-A|^DRO-B|^R5-S|^3CAT-|^ISTSAT|^OOV-CUBE|^ROBUSTA|^CATSAT|^WARATAH|^PHISAT|^LOPEN|^ROCK\b|^QUBE|^TOMORROW|^TYCHE|^LUR-1|^TANAGER|^IPERDRONE|^ORESAT|^CUAVA|^ERNST|^LEMU-NGE|^NIGHTJAR|^ARCTIC|^UM5-|^KANYINI|^HYPERFIELD|^PTD-4|^SEDNA|^COLIBRI|^VIZARD|^SIT-|^MSU\b|^RTU\b|^ADS-01|^HAISHAO|^TANSTAAFL|^GITAI|^LASARSAT|^CROCUBE|^CTC-0|^DJIBOUTI|^BUZZZER|^EDISON|^BALKAN|^GESAT|^INNOCUBE|^SCOT-1|^IRIS-F|^MBZ|^BNU-1|^KX-09|^TAURUS-1|^TIBA-1|^IHOPSAT|^ANDESITE|^AL-AMAL|^ZINYUAN|^ATHENA|^NEMO-HD|^DEKART|^NORBI|^SALSAT|^DRAGRACER|^LUCAS|^CUBEL|^AII-BRAVO|^TYVAK|^DEMO8|^SHERPA|^MONOLITH|^RSW-0|^CUPID|^TEIKYOSAT|^Z-SAT|^HIBARI|^DRUMS|^KOSEN|^LDPE-|^XW-3|^ETV-A1|^ASCENT|^TK-2|^PUJIANG|^ARCSAT|^DAQI|^PVSAT|^KSLV|^RANDEV|^SNUGLITE|^MIMAN|^WFOV|^MT-CUBE|^TRISAT|^CELESTA|^SHERPA|^BLUEWALKER|^OTB|^MATS|^JIAOTONG|^BIRKELAND|^CONTINUUM|^EOSSAT|^HUYGENS|^KUWAITSAT|^SHARJAHSAT|^LINUSS|^IMECE|^LUMELITE|^ARCTURUS|^GS-1|^NVS-0|^GEISAT|^GREGOIRE|^RUNNER-1|^HOTSAT|^GHOST-|^ORBITER|^AFR-1|^A-SEANSAT|^QIANKUN|^JUPITER|^DS-SAR|^ORB-12|^SCOOBII|^ARCADE|^GALASSIA|^NULION|^LUDI|^BB3|^BB4|^CH\b|^ANSER|^NESS\b|^CSC-[12]|^PVCC|^SPIP/i, 'education', 'tech'],
+
+  // ── V20 第三轮：1970-2020 年代长尾（逐族登记，均按公开任务性质归类）──
+  // 通信
+  [/^LES \d|^ATS \d|^CTS\b|^OTS \d|^AYAME|^ESIAFI|^NAHUEL I|^BS-2B|^YURI|^PAS \d|^CS 3|^TDF \d|^DFS \d|^AFRICASAT|^MSAT |^W75|^HGS \d|^BONUM|^NEWSAT|^HOT BIRD|^ES'HAIL|^LAOSAT|^TIANTONG|^AT&T T-|^SAUDIGEOSAT|^XINGYUN|^HONGYUN|^QUETZSAT|^NUSANTARA|^GLOBAL-\d|^EXACTVIEW|^LING QIAO|^DRTS|^MOZHAYETS|^ASTRO\b|^ICO\b/i, 'geo-comms', 'comms'],
+  [/^LING QIAO|^DRTS/i, 'relay', 'comms'],
+  // 导航
+  [/^BD 1|^COMPASS [GCI]|^BEIDOU|^STERKH/i, 'gnss-core', 'nav'],
+  [/^NNSS \d|^TRANSIT \d/i, 'other-nav', 'nav'],
+  // 遥感
+  [/^ERS [12]\b|^ZY \d|^ZY-\d|^HODOYOSHI|^LAPAN|^MOS 1|^SICH|^WEINA|^LONGJIANG|^HONGYAN|^YINHE|^LUOJIA|^DIWATA|^SSOT|^PAKTES|^MOHAMMED|^VRSS|^GOKTURK|^KENT RIDGE|^CARBONITE|^EO 1\b|^HYSIS|^BANGABANDHU|^SKY MUSTER|^PACE\b|^ZHEDA PIXING|^BEIJING 1|^JB-3|^NAXING|^SJ 16|^XINGCHI|^ZHIHUI|^GUANGCHUAN|^SSTL S1|^M2 PATHFINDER|^AL YAH|^S5\b|^M1\b|^R2\b|^LEO 1|^YIJIAN|^VENUS\b|^SAC C|^SAC-D/i, 'optical', 'eo'],
+  [/^ASTRO H|^MINXSS|^TOMS|^PARASOL|^PICARD/i, 'other-science', 'science'],
+  // 科学
+  [/^GP-B|^LISA PATHFINDER|^KEPLER|^GLAST|^COROT|^CRYOSAT|^GPM|^DSX|^FREJA|^MUNIN|^CYGFM|^SAC-D|^TOMS EP|^ASTEX|^TRIAD|^EOLE|^SHINSEI|^TANSEI|^UME \d|^ASTRID|^SCD \d|^VEP\b|^REX|^CERISE|^AURORA 2|^INFORMATOR|^SARA\b|^OXP 1|^STEP 2|^PROSPERO|^MIRANDA|^INTASAT|^ISIS \d|^ALOUETTE|^AZUR|^SERT 2|^DODGE|^SOICAL|^RIGIDSPHERE|^DODECAPOLE|^TRAAC|^COURIER|^GREB|^RADIATION SAT|^FTV|^DASH|^A-1 |^FR 1|^DIAPASON|^LCS 1|^OV[1-5]/i, 'other-science', 'science'],
+  [/^GEOS \d|^GEO IK|^EGS\b|^LARES|^RADCAL|^CALSPHERE|^ETALON|^STARLETTE|^AJISAI/i, 'geodesy', 'science'],
+  // 技术试验 / 教育
+  [/^MAQSAT|^SIMSAT|^DEMOSAT|^MAST\b|^CAPE 1|^CSTB|^LIBERTAD|^ETS \d|^LRE\b|^SERVIS|^RITE TARGET|^TATIANA|^MONITOR-E|^KUPON|^EQUATOR|^ST \d|^ARGOS\b|^ORSTED|^SACI|^TSX-5|^SNAP \d|^KOMPASS|^REFLECTOR|^MDS \d|^IDEFIX|^LATINSAT|^PERSEUS|^AIST|^SPRINT|^SOCRATES|^RISING|^UNIFORM|^PROX-1|^NPSAT|^MOMENTUS|^DANDE|^THEA|^EXCITE|^EAGLET|^ESEO|^EUCROPIS|^NEXTSAT|^SNUSAT|^MARCO|^PALISADE|^FLYING LAPTOP|^CORVUS|^TESLA|^UPPER FREE FLYER|^SPAWAR|^RANGE A|^FLYLAB|^NUVIEW|^GITAI|^SEA LAUNCH DEMO|^NNSS/i, 'tech-demo', 'tech'],
+
+  // ── V20 第四轮：个别型号（长尾里能确证的）──
+  [/^ESA\/GOES|^NPP$|^COMS 1|^ARKTIKA-M|^MTG-[SI]|^S6 MICHAEL FREILICH|^GOES/i, 'meteorology', 'weather'],
+  [/^GIOVE-[AB]|^GALILEO IOV/i, 'gnss-core', 'nav'],
+  [/^LT-1 \d|^NISAR|^BIOMASS|^CO3D\d|^SAR LUPE/i, 'sar', 'eo'],
+  [/^KHAYYAM|^EROS C3|^FALCON EYE|^IMS-1|^CE-SAT|^HODOYOSHI|^PACE\b|^CMS-0/i, 'optical', 'eo'],
+  [/^SPHEREX|^COSMIC\b|^TRACERS|^EZIE-|^ESCAPADE|^PANDORA|^ARCSTONE|^AEPEX|^UVSQ-SAT|^DYNAMICS EXPLORER|^NGRST|^EUCLID/i, 'space-physics', 'science'],
+  [/^WINDS|^KIZUNA/i, 'relay', 'comms'],
+  [/^JAS [12]|^YUBELEINY|^EYESAT|^HEALTHSAT|^AMSAT/i, 'amateur', 'comms'],
+  [/^MACSAT|^WESTPAC|^COMETS|^STRELA|^CMS-?0|^SKY MEXICO|^PSN N5|^HJS-|^OVZON|^HONGHU|^LEO 3|^APSTAR/i, 'geo-comms', 'comms'],
+  [/^FASTSAT|^FAST [12]|^SAR LUPE|^MKA PN2|^PRC TEST SPACECRAFT|^TIANYAN/i, 'other-mil', 'mil'],
+  [/^ION-SCV|^ADRAS-J/i, 'servicing', 'tech'],
+  [/^EUROPA CLIPPER|^ESCAPADE/i, 'interplanetary', 'other'],
+  // 军事（计划级）
+  [/^LKW-|^HBTSS|^SPIRALE|^SBSS|^EMISAT|^SAPPHIRE|^LDPE-|^ASBM-|^WSF-M|^ORS\b|^STPSAT|^ANGELS|^MYSTIQUE|^LACROSSE/i, 'other-mil', 'mil'],
+];
+
+/** 一级类目的默认二级（兜底） */
+const DEFAULT_SUB = {
+  comms: 'other-comms', nav: 'other-nav', eo: 'other-eo', mil: 'other-mil',
+  weather: 'other-weather', science: 'other-science', tech: 'other-tech',
+  station: 'station-module', debris: 'fragmentation', other: 'unnamed-object',
+};
+
+/**
+ * V20：二级分类。可在特定型号上覆盖一级类目（如 COSMOS → mil/unknown-military）。
+ * @returns {{ key: string, category: string }}
+ */
+export function detectSubcategory(ctx) {
+  const name = String((ctx && ctx.name) || '').trim();
+  const baseCat = String((ctx && ctx.category) || 'other');
+  const kind = String((ctx && ctx.objectKind) || '');
+
+  // 1) 碎片/残骸（按对象类型，最先判定）
+  if (kind === 'R-B') return { key: 'rocket-body', category: 'debris' };
+  if (kind === 'DEB') return { key: 'fragmentation', category: 'debris' };
+  // 2) 空间站/载人（按 stationType）
+  if (ctx && ctx.stationType === 'station') return { key: 'station-module', category: 'station' };
+  if (ctx && ctx.stationType === 'crew') return { key: 'crew', category: 'station' };
+  if (ctx && ctx.stationType === 'cargo') return { key: 'cargo', category: 'station' };
+  // 3) 望远镜
+  if (ctx && ctx.isTelescope) return { key: 'telescope', category: 'science' };
+
+  // 4) 具体型号/星座规则（可覆盖一级类目）
+  for (let i = 0; i < SUB_RULES.length; i++) {
+    const r = SUB_RULES[i];
+    if (r[0].test(name)) {
+      const cat = r[2] || SUBCATEGORY_DEFS[r[1]].cat;
+      return { key: r[1], category: cat };
+    }
+  }
+
+  // 5) 兜底：按一级类目 + 少量上下文细化
+  if (baseCat === 'other') {
+    if (/^TBA|TO BE ASSIGNED/i.test(name)) return { key: 'unknown', category: 'other' };
+    const year = Number(String((ctx && ctx.launchDate) || '').slice(0, 4));
+    if (Number.isFinite(year) && year > 1957 && year <= 1975) return { key: 'historical', category: 'other' };
+    // 名称形如 XXSAT / CUBE / NANO / PICO 的小卫星：归入技术试验-教育（命名惯例，非军用/商用判定）
+    if (/SAT$|CUBE|NANO|PICO|^MICRO/i.test(name)) return { key: 'education', category: 'tech' };
+    // 近两年新发射、尚无任何公开用途信息的载荷：按「待定级技术试验」处理（非军用/商用判定）
+    if (Number.isFinite(year) && year >= 2024) return { key: 'other-tech', category: 'tech' };
+    if (/^OBJECT [A-Z]{1,3}$/i.test(name)) return { key: 'unnamed-object', category: 'other' };
+    return { key: 'unnamed-object', category: 'other' };
+  }
+  if (baseCat === 'comms') {
+    if (ctx && ctx.orbitClass === 'GEO') return { key: 'geo-comms', category: 'comms' };
+    return { key: 'other-comms', category: 'comms' };
+  }
+  if (baseCat === 'eo') {
+    return { key: 'other-eo', category: 'eo' };
+  }
+  return { key: DEFAULT_SUB[baseCat] || 'other-science', category: baseCat };
+}
+
 /* ------------------------------------------------------------------ */
 /* 主分类函数                                                          */
 /* ------------------------------------------------------------------ */
@@ -369,11 +671,24 @@ export function classify(sat) {
   const name = String((sat && sat.name) || '').trim();
   const owner = String((sat && sat.owner) || '').trim() || 'UNK';
 
-  // 1) 任务类型：按顺序命中第一条
+  // 1) 任务类型：V5 优先级 debris > 望远镜 > 名称规则
   let cat = 'other', conf = 'low', note = '未匹配规则';
-  for (let i = 0; i < RULES.length; i++) {
-    const r = RULES[i];
-    if (r[0].test(name)) { cat = r[1]; conf = r[2]; note = r[3]; break; }
+  const objKind = String((sat && sat.objectKind) || '');
+  if (objKind === 'R-B' || objKind === 'DEB') {
+    // §20.4：火箭残骸 / 碎片一律归 debris，不参与任务分类，避免污染其它统计
+    cat = 'debris';
+    conf = 'high';
+    note = objKind === 'R-B' ? '火箭残骸（SATCAT 对象类型 R/B）' : '碎片（SATCAT 对象类型 DEB）';
+  } else if (sat && sat.isTelescope) {
+    // §20.4：望远镜保持 science，可用 isTelescope 单独筛选
+    cat = 'science';
+    conf = 'high';
+    note = '望远镜白名单（' + (sat.telescopeType || 'unknown') + '）';
+  } else {
+    for (let i = 0; i < RULES.length; i++) {
+      const r = RULES[i];
+      if (r[0].test(name)) { cat = r[1]; conf = r[2]; note = r[3]; break; }
+    }
   }
 
   // 2) 运营方：按顺序命中第一条；否则退回 owner 映射
@@ -388,6 +703,20 @@ export function classify(sat) {
     operatorKind = OWNER_KIND[owner] || K.unknown;
   }
 
+  // 3) V20 §41：二级分类（可在特定型号上覆盖一级类目，如 COSMOS → mil）
+  const sub = detectSubcategory({
+    name,
+    category: cat,
+    objectKind: objKind,
+    stationType: sat && sat.stationType,
+    isTelescope: !!(sat && sat.isTelescope),
+    owner,
+    orbitClass: sat && sat.orbitClass,
+    launchDate: sat && sat.launchDate,
+  });
+  if (sub && sub.category && sub.category !== cat) { cat = sub.category; }
+  const subDef = SUBCATEGORY_DEFS[sub && sub.key] || SUBCATEGORY_DEFS['unnamed-object'];
+
   const def = CATEGORY_DEFS[cat] || CATEGORY_DEFS.other;
   return {
     operator,
@@ -398,6 +727,9 @@ export function classify(sat) {
     categoryLabelEn: def.labelEn,
     categoryConfidence: conf,
     categoryNote: clip(note),
+    subcategory: subDef === SUBCATEGORY_DEFS[sub.key] ? sub.key : 'unnamed-object',
+    subcategoryLabel: subDef.label,
+    subcategoryLabelEn: subDef.labelEn,
   };
 }
 

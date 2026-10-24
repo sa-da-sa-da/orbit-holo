@@ -1,0 +1,16 @@
+{
+  "name": "orbital-mirror",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "地球卫星全息镜像 · 实时在轨目标三维可视化",
+  "scripts": {
+    "start": "node server.mjs --host 0.0.0.0 --port 5180",
+    "start:local": "node server.mjs --port 5180",
+    "start:lan": "node server.mjs --host 0.0.0.0 --port 5180",
+    "build": "node scripts/build-pages.mjs",
+    "build:data": "node scripts/build-pages.mjs",
+    "deploy:preview": "npm run build:data && npx wrangler pages deploy public --project-name orbital-mirror",
+    "deploy": "npm run build:data && npx wrangler pages deploy public --project-name orbital-mirror --branch main"
+  }
+}

@@ -67,7 +67,8 @@ const FIELDS = { id: 'number', name: 'string', intl: 'string', owner: 'string', 
 t('23 个字段名与类型逐字一致（V1 15 + V2 8）', () => {
   const sample = [built.satellites[0], built.satellites[300], built.satellites[8000], built.satellites[15000]];
   for (const s of sample) {
-    assert.deepEqual(Object.keys(s), Object.keys(FIELDS), '字段顺序/名称不一致: ' + Object.keys(s));
+    // V5 之后字段会继续增加，这里只校验「前 N 个字段名与顺序一致」+ 全部存在
+    assert.deepEqual(Object.keys(s).slice(0, Object.keys(FIELDS).length), Object.keys(FIELDS), '字段顺序/名称不一致: ' + Object.keys(s));
     for (const [k, ty] of Object.entries(FIELDS)) assert.equal(typeof s[k], ty, k + ' 类型应为 ' + ty);
   }
 });
@@ -161,7 +162,7 @@ t('parseTleText 空输入', () => {
 });
 
 console.log('== 5. V2 §7 运营方 / 任务类型 ==');
-const CATS = ['comms','nav','eo','mil','weather','science','tech','other'];
+const CATS = ['comms','nav','eo','mil','weather','science','tech','other','debris','station'];   // V5 追加 debris，V20 追加 station
 const KINDS = ['company','agency','military','intergov','academic','unknown'];
 const CONFS = ['high','medium','low'];
 
@@ -173,11 +174,11 @@ t('每颗卫星 8 个 V2 字段齐全、取值合法、note<=40', () => {
     assert.ok(CATS.includes(s.category), s.name + ' category=' + s.category);
     assert.ok(CONFS.includes(s.categoryConfidence), s.name + ' confidence=' + s.categoryConfidence);
     assert.ok(s.categoryNote.length <= 40, s.name + ' note 过长');
-    assert.equal(s.categoryLabel, { comms:'通信 / 互联网', nav:'导航 / 定位', eo:'对地观测 / 遥感', mil:'军事 / 侦察', weather:'气象 / 海洋 / 环境', science:'科学 / 深空 / 载人', tech:'技术试验 / 教育 / 业余', other:'其他 / 未分类' }[s.category]);
+    assert.equal(s.categoryLabel, { comms:'通信 / 互联网', nav:'导航 / 定位', eo:'对地观测 / 遥感', mil:'军事 / 侦察', weather:'气象 / 海洋 / 环境', science:'科学 / 深空 / 载人', tech:'技术试验 / 教育 / 业余', other:'其他 / 未分类', debris:'碎片 / 残骸', station:'空间站 / 载人' }[s.category]);
   }
 });
-t('categories 8 类、Σcount 与 satellites 一致', () => {
-  assert.equal(built.categories.length, 8);
+t('categories ≥8 类、Σcount 与 satellites 一致', () => {
+  assert.ok(built.categories.length >= 8);
   assert.deepEqual(built.categories.map(c => c.key), CATS);
   assert.equal(built.categories.reduce((a, c) => a + c.count, 0), built.satellites.length);
 });
@@ -204,8 +205,8 @@ t('spot check：STARLINK/ONEWEB/NAVSTAR/GOES/FY/SENTINEL/LANDSAT/GF/ISS/CSS/USA/
   eq(/^SENTINEL/i, 'eo');
   eq(/^LANDSAT/i, 'eo');
   eq(/^GAOFEN/i, 'eo');
-  eq(/^ISS \(ZARYA\)/i, 'science');
-  eq(/^CSS \(TIANHE\)/i, 'science');
+  eq(/^ISS \(ZARYA\)/i, 'station');    // V20：空间站独立成一级类目
+  eq(/^CSS \(TIANHE\)/i, 'station');
   eq(/^USA \d/i, 'mil');
   const yg = eq(/^YAOGAN/i, 'mil'); assert.ok(yg.categoryNote.indexOf('侦察') >= 0, 'YAOGAN 需在 note 说明');
   eq(/CUBESAT/i, 'tech');

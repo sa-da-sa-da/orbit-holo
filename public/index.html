@@ -111,12 +111,13 @@
         <div class="clock">
           <span id="clock-utc" class="clock-utc">--:--:--</span>
           <span id="clock-local" class="clock-local">UTC</span>
+        <span id="subsolar" class="subsolar" style="margin-left:10px;font:11px/1 ui-monospace,Consolas,monospace;color:#ffd166;opacity:.92;text-shadow:0 1px 2px rgba(0,0,0,.6);white-space:nowrap" title="太阳直射点纬度：地球自转轴倾角 23.44° 带来的季节变化，范围 ±23.44°">☀ --</span>
           <span id="clock-tag" class="clock-tag">实时</span>
         </div>
         <div id="speed-btns" class="chips speed-chips"></div>
       </div>
       <div id="layer-bar" class="layer-bar"></div>
-      <div class="hint">拖拽旋转 · 滚轮缩放 · 点击卫星查看详情（Shift+点击可选重叠目标）· <b>Alt+点击地球设置观测点</b> · 双击空白重置 · C 键切换配色</div>
+      <div class="hint">拖拽旋转 · 滚轮缩放 · 点击卫星查看详情（Shift+点击可选择重叠目标）· <b>Alt+点击地球设置观测点</b> · 双击空白重置 · C 键切换配色<span id="build-stamp" style="margin-left:10px;font:10px/1 ui-monospace,Consolas,monospace;color:rgba(207,233,242,.45)">v22</span></div>
     </footer>
   </div>
 
@@ -130,6 +131,6 @@
 
   <div id="toast" class="toast" role="status"></div>
 
-  <script type="module" src="./js/main.js"></script>
+  <script type="module" src="./js/main.js?v=22"></script>
 </body>
 </html>

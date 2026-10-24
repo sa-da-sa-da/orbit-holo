@@ -1,0 +1,22 @@
+name = "orbit-holo"
+main = "worker/index.js"
+compatibility_date = "2026-10-23"
+
+# 静态资源：public/ 目录（含 index.html、js、vendor、img、data 快照）
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# 目录数据：R2 桶（GitHub Actions 每次构建后写入 catalog.json.gz + meta.json）
+[[r2_buckets]]
+binding = "CATALOG"
+bucket_name = "orbit-holo-catalog"
+
+# 每 6 小时触发一次数据刷新（Worker 只负责唤起 GitHub Actions，重活在那里做）
+[triggers]
+crons = ["0 */6 * * *"]
+
+# 变量：GITHUB_REPO 在控制台/命令行设置；
+# ADMIN_TOKEN / GITHUB_TOKEN 用 wrangler secret put 写入，不要写在这里
+[vars]
+GITHUB_REPO = "sa-da-sa-da/orbit-holo"

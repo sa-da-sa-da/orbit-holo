@@ -16,11 +16,11 @@ console.log('     (字节: ' + Buffer.byteLength(raw) + ' 解压后)');
 for (const k of ['ok','updated','source','count','countries','satellites','categories','topOperators']) assert.ok(k in cat, '缺少 ' + k);
 pass('顶层含 categories/topOperators: ' + JSON.stringify(cat.categories.map(c=>c.key+':'+c.count)));
 const sumCat = cat.categories.reduce((a,c)=>a+c.count,0);
-assert.equal(sumCat, cat.count); assert.equal(cat.count, 15927);
+assert.equal(sumCat, cat.count); assert.ok(cat.count > 15000);
 pass('Σcategories.count = ' + sumCat + ' = count = satellites.length ✓');
-assert.equal(cat.categories.length, 8);
-assert.deepEqual(cat.categories.map(c=>c.key), ['comms','nav','eo','mil','weather','science','tech','other']);
-pass('categories 8 类、键名与顺序固定 ✓');
+assert.ok(cat.categories.length >= 8);
+assert.deepEqual(cat.categories.map(c=>c.key).slice(0, 8), ['comms','nav','eo','mil','weather','science','tech','other']);
+pass('categories ' + cat.categories.length + ' 类、前 8 类键名与顺序固定 ✓（V5 追加 debris）');
 for (const c of cat.categories) { assert.deepEqual(Object.keys(c), ['key','label','labelEn','count']); }
 
 // 2) 每颗卫星字段
@@ -30,26 +30,26 @@ const VT = { id:'number', name:'string', intl:'string', owner:'string', country:
   launchDate:'string', orbitClass:'string', period:'number', incl:'number', apogee:'number', perigee:'number', tle1:'string', tle2:'string',
   operator:'string', operatorZh:'string', operatorKind:'string', category:'string', categoryLabel:'string', categoryLabelEn:'string',
   categoryConfidence:'string', categoryNote:'string' };
-const KEYS = ['comms','nav','eo','mil','weather','science','tech','other'];
+const KEYS = cat.categories.map(c => c.key);
 const KINDS = ['company','agency','military','intergov','academic','unknown'];
 const CONFS = ['high','medium','low'];
 let missing = 0, badCat = 0, badKind = 0, badConf = 0, emptyOp = 0, longNote = 0, keyMismatch = 0;
 const catSet = new Set();
 for (const s of cat.satellites) {
-  if (Object.keys(s).length !== 23) keyMismatch++;
+  if (Object.keys(s).length < 23) keyMismatch++;
   for (const k of F) { const v = s[k]; if (v === undefined || v === null) { missing++; break; } if (typeof v !== VT[k]) { missing++; break; } }
   if (!KEYS.includes(s.category)) badCat++;
   if (!KINDS.includes(s.operatorKind)) badKind++;
   if (!CONFS.includes(s.categoryConfidence)) badConf++;
   if (!s.operator || !s.operatorZh || !s.operatorZh.trim()) emptyOp++;
   if (s.categoryNote.length > 40) longNote++;
-  if (s.categoryLabel !== ({comms:'通信 / 互联网',nav:'导航 / 定位',eo:'对地观测 / 遥感',mil:'军事 / 侦察',weather:'气象 / 海洋 / 环境',science:'科学 / 深空 / 载人',tech:'技术试验 / 教育 / 业余',other:'其他 / 未分类'})[s.category]) catSet.add('label-mismatch:' + s.category);
+  if (s.categoryLabel !== ({comms:'通信 / 互联网',nav:'导航 / 定位',eo:'对地观测 / 遥感',mil:'军事 / 侦察',weather:'气象 / 海洋 / 环境',science:'科学 / 深空 / 载人',tech:'技术试验 / 教育 / 业余',other:'其他 / 未分类',debris:'碎片 / 残骸',station:'空间站 / 载人'})[s.category]) catSet.add('label-mismatch:' + s.category);
 }
 assert.equal(keyMismatch, 0, '字段数量不一致: ' + keyMismatch);
 assert.equal(missing, 0, '字段缺失/类型错误: ' + missing);
 assert.equal(badCat, 0); assert.equal(badKind, 0); assert.equal(badConf, 0);
 assert.equal(emptyOp, 0); assert.equal(longNote, 0); assert.equal(catSet.size, 0);
-pass('全部 15,927 条：23 个字段齐全、类型正确、category/operatorKind/confidence 取值合法、note<=40 字、无空 operator');
+pass('全部 ' + cat.count + ' 条：23+ 个 V1/V2 字段齐全、类型正确、category/operatorKind/confidence 取值合法、note<=40 字、无空 operator');
 
 // 3) other 占比
 const byCat = {}; for (const k of KEYS) byCat[k] = 0;
@@ -86,7 +86,7 @@ check('ONEWEB', /^ONEWEB/i, s => { assert.equal(s.operator,'Eutelsat OneWeb'); a
 check('NAVSTAR(GPS)', /^NAVSTAR|^GPS/i, s => assert.equal(s.category,'nav'));
 check('GOES/NOAA/FY', /^GOES|^NOAA|^FENGYUN|^FY-/i, s => assert.equal(s.category,'weather'));
 check('SENTINEL/LANDSAT/GF', /^SENTINEL|^LANDSAT|^GAOFEN|^GF-/i, s => assert.equal(s.category,'eo'));
-check('ISS/CSS', /^ISS|^CSS/i, s => assert.equal(s.category,'science'));
+check('ISS/CSS', /^ISS|^CSS/i, s => assert.equal(s.category,'station'));   // V20：空间站独立成 station 类
 check('USA/NROL', /^USA|^NROL/i, s => assert.equal(s.category,'mil'));
 check('CUBESAT', /CUBESAT/i, s => assert.equal(s.category,'tech'));
 check('BEIDOU', /^BEIDOU/i, s => assert.equal(s.category,'nav'));
