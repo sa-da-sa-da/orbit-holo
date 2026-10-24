@@ -184,7 +184,7 @@ AstroSat · MOST · CHEOPS（光学）· Swift · Fermi/GLAST · DAMPE 悟空 ·
     │   ├─ data/land-110m.json    本地海岸线数据
     │   └─ vendor/                three.js r160 + satellite.js 5.0（全本地，离线可用）
     ├─ docs/                      截图
-    ├─ CONTRACT.md / CONTRACT-V2.md  接口契约
+    ├─ internal-docs/             本地归档：契约 / 审计 / 部署文档（不提交）
     └─ 启动.bat                   Windows 一键启动
 
 ## 技术要点
@@ -217,7 +217,7 @@ AstroSat · MOST · CHEOPS（光学）· Swift · Fermi/GLAST · DAMPE 悟空 ·
 
 - **局域网访问**：`npm run start:lan`（等价 `node server.mjs --host 0.0.0.0`），手机用 `http://<内网IP>:5180` 打开。
 - **Cloudflare Pages**：`npm run build:data` → `npm run deploy`（纯静态，数据导出为 `public/data/catalog.json.gz`，前端自动回退读取）。
-- 完整步骤、Worker+R2 自动刷新方案、合规提醒见 [DEPLOY-CLOUDFLARE.md](./DEPLOY-CLOUDFLARE.md)。
+- 完整步骤、Worker+R2 自动刷新方案、合规提醒见本地 `internal-docs/DEPLOY-CLOUDFLARE.md`（不随仓库发布）。
 
 ## 隐私与合规
 
@@ -238,8 +238,7 @@ AstroSat · MOST · CHEOPS（光学）· Swift · Fermi/GLAST · DAMPE 悟空 ·
 | 抓取 | 20s 超时、32MB 上限、仅 http(s)、≤3 次重定向 | 失败自动回退旧缓存 |
 | 健康检查 | GET /api/health | 返回 count / updated / source / 解析健康（duplicates、malformed、noSatcat）/ 并发与运行时长 |
 
-审计与整改记录见 [AUDIT.md](./AUDIT.md) 与 [AUDIT-V4-STATUS.md](./AUDIT-V4-STATUS.md)；
-数据核验（规模、一致性断言、与 Space-Track 官方逐条抽查 11/11）见 [DATA-CHECK.md](./DATA-CHECK.md)。
+审计与整改记录、数据核验记录保存在本地 `internal-docs/`（不随仓库发布）。
 
 ## 常见问题
 
