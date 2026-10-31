@@ -30,13 +30,14 @@
 <main>
   <div class="sub">Orbital Mirror · Privacy &amp; Compliance</div>
   <h1>隐私与合规说明</h1>
-  <p>本站是一个本地运行的三维卫星可视化工具。我们的原则很简单：<strong>不追踪、不画像、不卖数据、不使用第三方统计。</strong></p>
+  <p>本站是一个三维卫星可视化工具。我们的原则很简单：<strong>自身不追踪、不画像、不卖数据、不使用第三方统计</strong>；唯一的例外是页面通过 <strong>谷歌 AdSense</strong> 投放广告，广告环节可能由 Google 使用第三方 Cookie 做投放与频次控制。</p>
 
   <h2>一、我们用什么、不用什么</h2>
   <table>
     <tr><th>项目</th><th>使用情况</th></tr>
-    <tr><td>Cookie</td><td><span class="ok">不使用</span>（浏览器端不写入任何 Cookie；服务端与 Space-Track 的会话 Cookie 只存在于服务进程内存中，不会下发到你的浏览器）</td></tr>
-    <tr><td>第三方统计 / 广告 / 指纹</td><td><span class="ok">全部不使用</span>（页面零外部脚本，全部资源同源加载）</td></tr>
+    <tr><td>Cookie</td><td>本站自身<span class="ok">不写入</span>任何 Cookie（服务端与 Space-Track 的会话 Cookie 只存在于服务进程内存中，不会下发到你的浏览器）；但页面加载的谷歌 AdSense 广告可能使用第三方 Cookie 做广告投放与频次控制</td></tr>
+    <tr><td>第三方统计 / 广告 / 指纹</td><td>不使用第三方统计与指纹；<strong>仅接入谷歌 AdSense 广告</strong>（发布商 ID <code>ca-pub-2897720906666216</code>）。广告请求由 Google 处理，站点不会把你的观测点、偏好等本地数据主动发送给 Google</td></tr>
+    <tr><td>ads.txt</td><td>站点根目录 <code>/ads.txt</code> 声明授权卖家（Google AdSense），供 AdSense 抓取校验；文件由仓库 <code>static/ads.txt</code> 发布</td></tr>
     <tr><td>浏览器本地存储 localStorage</td><td>仅保存你的偏好，见下表；<strong>不会上传到任何服务器</strong></td></tr>
     <tr><td>浏览器定位（可拒绝）</td><td>只在你点击「使用我的位置」时申请，坐标仅存本地，用于计算可见卫星与过境</td></tr>
   </table>
@@ -59,6 +60,7 @@
     <tr><td>卫星两行根数（TLE）与目录元数据</td><td>Space-Track.org（需注册账号，按其使用条款仅用于非商业研究/可视化）与 CelesTrak</td></tr>
     <tr><td>望远镜观测成果图</td><td>NASA 图像库（公共领域，标注了具体机构出处），点击可跳转 NASA 原页</td></tr>
     <tr><td>岸线/国界底图</td><td>Natural Earth / world-atlas（公共领域）</td></tr>
+    <tr><td>广告投放</td><td>谷歌 AdSense（发布商 ID <code>ca-pub-2897720906666216</code>）：广告素材与投放由 Google 决定，本站不参与选材；用户点击广告后的行为由广告主与 Google 负责</td></tr>
   </table>
 
   <h2>四、合规提示</h2>
@@ -67,24 +69,24 @@
   <h2>五、面向欧盟用户（GDPR）</h2>
   <table>
     <tr><th>项目</th><th>说明</th></tr>
-    <tr><td>数据控制者</td><td>本站为本地/自建部署的开源可视化工具，不设集中式用户数据库。若你访问的是他人部署的实例，请联系该实例的运营者。</td></tr>
-    <tr><td>处理的法律依据</td><td>GDPR Art. 6(1)(f) 正当利益：仅在你本机保存界面偏好；Art. 6(1)(a) 同意：仅在你主动点击「使用我的位置」时处理定位。</td></tr>
-    <tr><td>处理的个人数据</td><td>仅浏览器 localStorage 中的偏好与（可选的）观测点坐标；<strong>不上传、不共享、不用于画像</strong>。</td></tr>
+    <tr><td>数据控制者</td><td>本站为本地/自建部署的开源可视化工具，不设集中式用户数据库。若你访问的是他人部署的实例，请联系该实例的运营者。广告环节的数据控制者为 Google（Google LLC / Google Ireland Limited）。</td></tr>
+    <tr><td>处理的法律依据</td><td>GDPR Art. 6(1)(f) 正当利益：仅在你本机保存界面偏好；Art. 6(1)(a) 同意：仅在你主动点击「使用我的位置」时处理定位；广告个性化依据 Google 的同意管理机制（TCF/CMP）在欧盟/英国等地区取得同意，未同意时仅投放非个性化广告。</td></tr>
+    <tr><td>处理的个人数据</td><td>仅浏览器 localStorage 中的偏好与（可选的）观测点坐标；<strong>不上传、不共享、不用于画像</strong>。广告请求本身会由 Google 处理（如 IP、User-Agent、广告标识符），该部分适用 Google 的隐私政策。</td></tr>
     <tr><td>存储期限</td><td>直至你清除浏览器数据；站内「⚙ 设置 → 隐私与数据 → 清除本地数据」可一键删除。</td></tr>
-    <tr><td>你的权利</td><td>访问、更正、删除、限制处理、数据可携、反对（Art. 15–21）。由于数据仅存于你的设备，直接清除即可实现删除权；如需协助可联系实例运营者。</td></tr>
-    <tr><td>跨境传输</td><td>无：不发生数据传输。卫星目录由运营者服务器或 CDN 提供，不含任何用户数据。</td></tr>
-    <tr><td>自动化决策 / 画像</td><td>无。</td></tr>
+    <tr><td>你的权利</td><td>访问、更正、删除、限制处理、数据可携、反对（Art. 15–21）。由于数据仅存于你的设备，直接清除即可实现删除权；如需协助可联系实例运营者。广告相关数据可按 Google 隐私说明在「我的广告中心」中管理与删除。</td></tr>
+    <tr><td>跨境传输</td><td>卫星目录本身不含任何用户数据；<strong>谷歌 AdSense 的广告请求可能传输至 Google 的全球服务器</strong>，该跨境传输由 Google 的隐私政策与标准合同条款（SCC）约束。</td></tr>
+    <tr><td>自动化决策 / 画像</td><td>站点自身无；<strong>谷歌 AdSense 可能依据广告标识符与兴趣做广告选择</strong>，属 Google 的处理活动，可在「我的广告中心」关闭个性化广告。</td></tr>
     <tr><td>未成年人</td><td>本工具面向一般公众，不主动收集任何年龄信息。</td></tr>
     <tr><td>监管机构投诉</td><td>你有权向所在成员国的数据保护机构投诉。</td></tr>
   </table>
 
   <div class="en">
     <h2>English summary</h2>
-    <p>This is a locally hosted 3D satellite visualiser. <strong>No cookies, no analytics, no advertising, no fingerprinting.</strong> All third-party requests are avoided; every asset is served same-origin.</p>
+    <p>This is a 3D satellite visualiser. <strong>The site itself sets no cookies, runs no analytics and does no fingerprinting</strong> — every application asset is served same-origin. The single exception is <strong>Google AdSense</strong> advertising (publisher <code>ca-pub-2897720906666216</code>): ad requests are handled by Google, which may use third-party cookies for ad serving and frequency capping. An <code>ads.txt</code> file is published at the site root.</p>
     <p>Preferences are stored only in your browser's <code>localStorage</code> (<code>holomirror.observer</code>, <code>holomirror.settings</code>, <code>holomirror.detailPos</code>, <code>holomirror.consent</code>) and never uploaded. Geolocation is requested only when you press "Use my location" and stays on your device.</p>
     <p>Data: TLE/SATCAT from Space-Track.org (non-commercial use per their terms) and CelesTrak; telescope imagery from NASA Image Library (public domain, credited per image, linked to the original page); basemap from Natural Earth / world-atlas (public domain).</p>
     <p>Intended for public orbital-data visualisation and education only — not for tracking, targeting or navigation.</p>
-    <p><strong>EU users (GDPR):</strong> controller = the operator of the instance you are visiting; legal basis = Art. 6(1)(f) legitimate interest (UI preferences stored locally) and Art. 6(1)(a) consent (geolocation, only when you press "Use my location"). No personal data is transmitted, stored server-side, profiled or shared; no international transfers; no automated decision-making. Storage lasts until you clear it — use "⚙ Settings → Privacy & data → Clear local data" to erase everything (Art. 17). You may exercise rights under Art. 15–21 by contacting the operator, and you may lodge a complaint with your local supervisory authority.</p>
+    <p><strong>EU users (GDPR):</strong> controller = the operator of the instance you are visiting (Google is a separate controller for ad serving); legal basis = Art. 6(1)(f) legitimate interest (UI preferences stored locally) and Art. 6(1)(a) consent (geolocation, only when you press "Use my location"). Personalised advertising relies on Google's consent management (TCF/CMP) — without consent, only non-personalised ads are served. The site itself transmits no personal data, stores nothing server-side and does no profiling; ad requests (IP, user agent, ad identifier) are handled by Google under its own privacy policy and may involve international transfers safeguarded by SCCs. Storage lasts until you clear it — use "⚙ Settings → Privacy & data → Clear local data" to erase everything (Art. 17). You may exercise rights under Art. 15–21 by contacting the operator, and you may lodge a complaint with your local supervisory authority.</p>
   </div>
 
   <p style="margin-top:32px"><a href="./">← 返回 / Back to the globe</a></p>
