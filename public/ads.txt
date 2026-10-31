@@ -1,0 +1,4 @@
+# ads.txt（Authorized Digital Sellers）
+# 谷歌 AdSense 会抓取站点根目录的 /ads.txt 用于校验授权卖家。
+# 发布商 ID：ca-pub-2897720906666216（2026-10-31 由 static/ads.txt 发布，勿直接改 public/）
+google.com, pub-2897720906666216, DIRECT, f08c47fec0942fa0

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // 把 data/catalog.json 导出为静态部署所需的 public/data/catalog.json.gz
+// 并把 static/ 下的站点根文件（如 ads.txt）发布到 public/ 根目录
 // 用法：node scripts/build-pages.mjs
-import { readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, statSync, cpSync, existsSync, readdirSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +30,17 @@ writeFileSync(join(outDir, 'meta.json'), JSON.stringify(meta, null, 2));
 
 console.log('[build:data] 写入 public/data/catalog.json.gz  ' + (gz.length / 1048576).toFixed(2) + ' MB（源 ' + (raw.length / 1048576).toFixed(2) + ' MB）');
 console.log('[build:data] 卫星 ' + meta.count + ' · 更新 ' + meta.updated + ' · 二级分类 ' + meta.subcategories);
+
+// 发布 static/ 下的站点根文件（ads.txt 等）：源在 static/，产物在 public/
+const staticDir = join(rootDir, 'static');
+if (existsSync(staticDir)) {
+  const names = readdirSync(staticDir);
+  for (const name of names) {
+    cpSync(join(staticDir, name), join(rootDir, 'public', name), { recursive: true });
+  }
+  if (names.length) console.log('[build:static] 发布到 public/：' + names.join('、'));
+}
+
 if (statSync(join(outDir, 'catalog.json.gz')).size > 25 * 1024 * 1024) {
   console.error('[build:data] 警告：超过 Cloudflare Pages 单文件 25MB 限制');
   process.exit(1);

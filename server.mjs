@@ -114,11 +114,12 @@ const HEADERS_TIMEOUT_MS = 15_000;                                         // §
 const STATIC_GZ_CACHE_MAX_BYTES = 24 * 1024 * 1024;                        // 静态 gzip 缓存字节上限
 
 // §16.7 安全响应头（CSP 两种形态见下方说明）
-const CSP_STRICT = "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'";
+const CSP_STRICT = "default-src 'self'; img-src 'self' data: blob: https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://*.gstatic.com; style-src 'self' 'unsafe-inline'; script-src 'self' https://pagead2.googlesyndication.com; worker-src 'self' blob:; connect-src 'self' https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://*.gstatic.com; frame-src https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com";
 // public/index.html 第 10 行是 <script type="importmap"> 内联脚本，契约的 script-src 'self' 会直接把它拦掉、
 // 导致整个页面无法加载模块。该文件不归我改，故默认在 script-src 上补 'unsafe-inline'；
 // 需要严格版（已把 importmap 外置或加 nonce 后）用 CSP_MODE=strict。
-const CSP_COMPAT = "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self'";
+// img/connect/frame 额外放行 AdSense 广告域名（谷歌广告由 AdSense 注入 iframe 与图片）。
+const CSP_COMPAT = "default-src 'self'; img-src 'self' data: blob: https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://*.gstatic.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://pagead2.googlesyndication.com; worker-src 'self' blob:; connect-src 'self' https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://*.gstatic.com; frame-src https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com";
 const CSP = String(process.env.CSP_MODE || '').toLowerCase() === 'strict' ? CSP_STRICT : CSP_COMPAT;
 
 /** 所有响应（静态 + API）共用：安全头 + 按需 CORS */

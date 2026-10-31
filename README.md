@@ -221,7 +221,8 @@ AstroSat · MOST · CHEOPS（光学）· Swift · Fermi/GLAST · DAMPE 悟空 ·
 
 ## 隐私与合规
 
-- **不使用 Cookie、无第三方脚本、无统计/广告/指纹**（页面所有资源同源加载）；浏览器实测 `Set-Cookie: none`。
+- **站点自身不写 Cookie、无统计/指纹**（应用资源全部同源加载）；唯一例外是**谷歌 AdSense 广告**（发布商 `ca-pub-2897720906666216`），广告环节可能由 Google 使用第三方 Cookie 做投放与频控。
+- 站点根目录发布 `/ads.txt`（授权卖家清单），源文件在 `static/ads.txt`，构建时自动复制到 `public/`，请勿直接改 `public/`。
 - 仅用 `localStorage` 保存偏好：`holomirror.observer`（观测点）、`holomirror.settings`（时区/语言/图层等）、`holomirror.detailPos`（详情卡位置）、`holomirror.consent`（隐私提示已读）。
 - 浏览器定位只在你点「使用我的位置」时申请，坐标仅存本机。
 - 完整说明（中英双语）见 [public/privacy.html](./public/privacy.html)，站点内「⚙ 设置 → 隐私」也可打开，并提供「清除本地数据」。
